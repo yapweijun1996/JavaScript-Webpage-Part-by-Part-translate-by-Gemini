@@ -32,6 +32,7 @@
     border:1px solid #ccc; background:#fff; padding:8px 12px; cursor:pointer; border-radius:8px;
   }
   .toolbar .btn:hover{ border-color:#999 }
+  .toolbar .btn.is-active{ background:var(--accent); color:#fff; border-color:var(--accent); }
   .wrap{
     display:flex; justify-content:center; padding:20px;
   }
@@ -137,6 +138,7 @@
     body{ background:#fff; }
     .toolbar, .wrap { padding:0; }
     .toolbar{ display:none !important; }
+    #__i18n_sticky_ctrl__{ display:none !important; }
     .page{ width:auto; min-height:auto; box-shadow:none; }
     .sheet{ padding:0; }
   }
@@ -148,6 +150,7 @@
 <div class="toolbar">
   <button class="btn" id="btn-print">Print</button>
   <button class="btn" id="btn-add-rows">Add 20 Rows</button>
+  <button class="btn" id="btn-ai-translate">AI Translate</button>
   <span style="margin-left:auto;color:#666;">A4 printable sample invoice • HTML/CSS/JS only</span>
 </div>
 
@@ -373,6 +376,17 @@ finance@globe3.com • +60 7-123 4567</p>
 // === I18N Translate-In-Place — Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
 // Uses your Gemini body format (model/topP/response_mime_type/thinkingBudget/safetySettings).
 (() => {
+
+  const btnTranslate = document.getElementById('btn-ai-translate');
+  if (btnTranslate) {
+    btnTranslate.setAttribute('aria-pressed', 'false');
+    btnTranslate.addEventListener('click', () => {
+      if (typeof window.__i18nToggleTranslatePanel === 'function') {
+        window.__i18nToggleTranslatePanel();
+      }
+    });
+  }
+  
   // ---------------- Settings ----------------
   const MODEL = "gemini-2.5-flash-lite";
   const TEMPERATURE = 0;     // deterministic; change if you want
@@ -744,34 +758,50 @@ finance@globe3.com • +60 7-123 4567</p>
   }
 
   // ---------- Sticky control ----------
-  function mountStickyControl(){
-    const old=document.getElementById("__i18n_sticky_ctrl__"); if(old) old.remove();
-    const wrap=document.createElement("div");
-    wrap.id="__i18n_sticky_ctrl__";
-    wrap.style.cssText="position:fixed;top:14px;right:14px;z-index:2147483646;display:flex;gap:6px;align-items:center;background:rgba(0,0,0,.60);backdrop-filter:blur(4px);color:#fff;border-radius:12px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;";
-    if(!document.getElementById("__i18n_select_style__")){
-      const s=document.createElement("style");
-      s.id="__i18n_select_style__";
-      s.textContent=`
+  let stickyCtrlEl = null;
+  let stickySelectEl = null;
+
+  function ensureStickyControlStyles(){
+    if(document.getElementById("__i18n_select_style__")) return;
+    const s=document.createElement("style");
+    s.id="__i18n_select_style__";
+    s.textContent=`
         #__i18n_sticky_ctrl__ select { color:#111; background:#fff; border:1px solid rgba(0,0,0,.35); }
         #__i18n_sticky_ctrl__ select option { color:#111; background:#fff; }
         #__i18n_sticky_ctrl__ select option:checked { background:#e8f0fe; color:#111; }
         #__i18n_sticky_ctrl__ select:focus { outline:2px solid #5b9dd9; outline-offset:2px; }
-        #__i18n_sticky_ctrl__ button { border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.14); color:#fff; }
+        #__i18n_sticky_ctrl__ button { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.12); color:#fff; }
         #__i18n_sticky_ctrl__ button:hover { background:rgba(255,255,255,.22); }
-      `;
-      document.head.appendChild(s);
-    }
-    const label=document.createElement("span"); label.textContent="Translate to:"; label.style.cssText="font-size:12px;opacity:.9;";
-    const select=document.createElement("select"); select.style.cssText="font-size:12px;padding:4px 6px;border-radius:8px;outline:none;max-width:280px;";
+    `;
+    document.head.appendChild(s);
+  }
+
+  function mountStickyControl(){
+    const old=document.getElementById("__i18n_sticky_ctrl__"); if(old) old.remove();
+    ensureStickyControlStyles();
+    const wrap=document.createElement("div");
+    wrap.id="__i18n_sticky_ctrl__";
+    wrap.style.cssText="position:sticky;top:16px;z-index:2147483646;display:none;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(0,0,0,.70);backdrop-filter:blur(4px);color:#fff;border-radius:10px;padding:6px 10px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;margin:12px 16px 0 auto;max-width:min(100%,360px);";
+    wrap.setAttribute("aria-hidden","true");
+    wrap.setAttribute("data-visible","0");
+    const label=document.createElement("span"); label.textContent="Translate to:"; label.style.cssText="font-size:11px;opacity:.85;";
+    const select=document.createElement("select"); select.style.cssText="font-size:12px;padding:4px 6px;border-radius:8px;outline:none;max-width:220px;";
     LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
     select.value = localStorage.getItem(LS_LANG) || "zh-CN";
     const btnGo=document.createElement("button"); btnGo.textContent="Translate"; btnGo.style.cssText="font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;";
     const btnUndo=document.createElement("button"); btnUndo.textContent="Undo"; btnUndo.style.cssText=btnGo.style.cssText;
     const btnKey=document.createElement("button"); btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.cssText=btnGo.style.cssText;
-
     wrap.appendChild(label); wrap.appendChild(select); wrap.appendChild(btnGo); wrap.appendChild(btnUndo); wrap.appendChild(btnKey);
-    document.body.appendChild(wrap);
+    const toolbar=document.querySelector(".toolbar");
+    if(toolbar && toolbar.parentNode){
+      toolbar.parentNode.insertBefore(wrap, toolbar.nextSibling);
+    } else if(document.body.firstChild){
+      document.body.insertBefore(wrap, document.body.firstChild);
+    } else {
+      document.body.appendChild(wrap);
+    }
+    stickyCtrlEl = wrap;
+    stickySelectEl = select;
 
     btnGo.addEventListener("click", ()=> runTranslate(select.value));
     btnUndo.addEventListener("click", ()=>{ if(typeof window.__i18nUndo==="function") window.__i18nUndo(); else console.log("Nothing to undo yet."); });
@@ -784,8 +814,31 @@ finance@globe3.com • +60 7-123 4567</p>
     });
   }
 
+  function setStickyCtrlVisibility(force){
+    const el = (stickyCtrlEl && document.body.contains(stickyCtrlEl)) ? stickyCtrlEl : document.getElementById("__i18n_sticky_ctrl__");
+    if(!el) return;
+    const toggleBtn = document.getElementById("btn-ai-translate");
+    let shouldShow;
+    if(typeof force === "boolean") shouldShow = force;
+    else shouldShow = el.getAttribute("data-visible") !== "1";
+    el.setAttribute("data-visible", shouldShow ? "1" : "0");
+    el.style.display = shouldShow ? "flex" : "none";
+    if(shouldShow){
+      el.removeAttribute("aria-hidden");
+      requestAnimationFrame(()=> stickySelectEl?.focus());
+      if(toggleBtn){ toggleBtn.setAttribute("aria-pressed","true"); toggleBtn.classList.add("is-active"); }
+    } else {
+      el.setAttribute("aria-hidden","true");
+      if(toggleBtn){ toggleBtn.setAttribute("aria-pressed","false"); toggleBtn.classList.remove("is-active"); }
+    }
+  }
+
   // Init
   mountStickyControl();
+  window.__i18nToggleTranslatePanel = (force) => {
+    if(!stickyCtrlEl || !document.body.contains(stickyCtrlEl)) mountStickyControl();
+    setStickyCtrlVisibility(force);
+  };
   window.__i18nRunTranslate = runTranslate;
 })();
 
