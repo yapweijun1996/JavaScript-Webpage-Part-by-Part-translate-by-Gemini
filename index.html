@@ -138,7 +138,6 @@
     body{ background:#fff; }
     .toolbar, .wrap { padding:0; }
     .toolbar{ display:none !important; }
-    #__i18n_sticky_ctrl__{ display:none !important; }
     .page{ width:auto; min-height:auto; box-shadow:none; }
     .sheet{ padding:0; }
   }
@@ -373,20 +372,25 @@ finance@globe3.com • +60 7-123 4567</p>
 
 <!-- i18n Gemini Translate [start] -->
 <script>
-// === I18N Translate-In-Place — Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
+// === I18N Translate-In-Place � Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
 // Uses your Gemini body format (model/topP/response_mime_type/thinkingBudget/safetySettings).
+const I18N_TOGGLE_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
+window.I18N_TOGGLE_SELECTOR = I18N_TOGGLE_SELECTOR;
+const btnTranslate = document.querySelector(I18N_TOGGLE_SELECTOR);
+if (btnTranslate) {
+  btnTranslate.setAttribute('aria-pressed', 'false');
+  if (!btnTranslate.hasAttribute('data-i18n-toggle')) {
+    btnTranslate.setAttribute('data-i18n-toggle', 'ai-translate');
+  }
+  btnTranslate.addEventListener('click', () => {
+    if (typeof window.__i18nToggleTranslatePanel === 'function') {
+      window.__i18nToggleTranslatePanel();
+    }
+  });
+}
+
 (() => {
 
-  const btnTranslate = document.getElementById('btn-ai-translate');
-  if (btnTranslate) {
-    btnTranslate.setAttribute('aria-pressed', 'false');
-    btnTranslate.addEventListener('click', () => {
-      if (typeof window.__i18nToggleTranslatePanel === 'function') {
-        window.__i18nToggleTranslatePanel();
-      }
-    });
-  }
-  
   // ---------------- Settings ----------------
   const MODEL = "gemini-2.5-flash-lite";
   const TEMPERATURE = 0;     // deterministic; change if you want
@@ -402,6 +406,7 @@ finance@globe3.com • +60 7-123 4567</p>
   const AUTO_CLOSE_MS = 900;
   const MIN_SCALE = 0.6;
   const SCALE_TRANSITION_MS = 80;
+  const TOGGLE_BUTTON_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
 
   const LANGS = [
     { v: "zh-CN", label: "Mandarin — Mainland (简体)", instr: "Translate to Simplified Chinese (Mainland style)." },
@@ -775,6 +780,12 @@ finance@globe3.com • +60 7-123 4567</p>
     `;
     document.head.appendChild(s);
   }
+  if(!document.getElementById("__i18n_print_style__")){
+    const p=document.createElement("style");
+    p.id="__i18n_print_style__";
+    p.textContent='@media print { #__i18n_sticky_ctrl__, #btn-ai-translate, [data-i18n-toggle="ai-translate"] { display:none !important; } }';
+    document.head.appendChild(p);
+  }
 
   function mountStickyControl(){
     const old=document.getElementById("__i18n_sticky_ctrl__"); if(old) old.remove();
@@ -817,7 +828,7 @@ finance@globe3.com • +60 7-123 4567</p>
   function setStickyCtrlVisibility(force){
     const el = (stickyCtrlEl && document.body.contains(stickyCtrlEl)) ? stickyCtrlEl : document.getElementById("__i18n_sticky_ctrl__");
     if(!el) return;
-    const toggleBtn = document.getElementById("btn-ai-translate");
+    const toggleBtn = document.querySelector(TOGGLE_BUTTON_SELECTOR);
     let shouldShow;
     if(typeof force === "boolean") shouldShow = force;
     else shouldShow = el.getAttribute("data-visible") !== "1";
