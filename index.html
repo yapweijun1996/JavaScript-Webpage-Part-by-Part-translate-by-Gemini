@@ -523,6 +523,7 @@ if (btnTranslate) {
         if (!raw || !raw.trim()) return NodeFilter.FILTER_REJECT;
         const p = node.parentElement;
         if (!p || TAG_SKIP.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        if (p.closest?.('[data-i18n-skip="1"]')) return NodeFilter.FILTER_REJECT;
         if (ONLY_VISIBLE && !isVisible(p)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       }
@@ -568,7 +569,7 @@ if (btnTranslate) {
       }
 
       const shouldLock = !WEAK_CONTAINER_TAGS.has(key.tagName);
-      const { W, H, prevStyle } = __i18n_lockContainerSize(key, shouldLock);
+      const { W, H, prevStyle, locked } = __i18n_lockContainerSize(key, shouldLock);
       scaler.style.width = "100%";
       scaler.style.height = "100%";
 
@@ -576,7 +577,7 @@ if (btnTranslate) {
       const tw = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null);
       for (let t; (t = tw.nextNode());) originalText.set(t, t.nodeValue);
 
-      groups.push({ container: key, scaler, content, width: W, height: H, prevStyle, nodes: [], moved, originalText });
+      groups.push({ container: key, scaler, content, width: W, height: H, prevStyle, locked, nodes: [], moved, originalText });
       seen.add(key);
     }
 
@@ -597,6 +598,8 @@ if (btnTranslate) {
           g.scaler.remove();
           if (g.prevStyle === null) g.container.removeAttribute("style");
           else g.container.setAttribute("style", g.prevStyle);
+          if (g.container.dataset) { delete g.container.dataset.i18nContainer; delete g.container.dataset.i18nSkip; }
+          try { delete g.container.__i18nScaler; delete g.container.__i18nContent; delete g.container.__i18nMoved; } catch {}
         } catch (e) { console.warn("Undo error on a container:", e); }
       }
       console.log(`Undo complete: restored ${groups.length} containers.`);
@@ -764,18 +767,19 @@ if (btnTranslate) {
 
       // Fit each container's content into the locked box
       for (const g of groups) {
+        g.scaler.style.transform = "none";
+        if (!g.locked) continue;
         const W = Math.max(1, g.width);
         const H = Math.max(1, g.height);
-        g.scaler.style.transform = "none";
         const sw = Math.max(g.content.scrollWidth, g.scaler.scrollWidth, g.content.offsetWidth);
         const sh = Math.max(g.content.scrollHeight, g.scaler.scrollHeight, g.content.offsetHeight);
         let sx = W / sw;
         let sy = H / sh;
         if (!isFinite(sy) || sy <= 0) sy = sx;
-        const s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
-        if (s < 1) g.scaler.style.transform = `scale(${s})`;
+        if (sx >= 1) continue;
+        let s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
+        if (s < 1) g.scaler.style.transform = "scale(" + s + ")";
       }
-
       loader.setProgress(100, "Done", "");
       console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
     } catch (err) {
@@ -793,12 +797,120 @@ if (btnTranslate) {
     const s=document.createElement("style");
     s.id="__i18n_select_style__";
     s.textContent=`
-        #__i18n_sticky_ctrl__ select { color:#111; background:#fff; border:1px solid rgba(0,0,0,.35); }
-        #__i18n_sticky_ctrl__ select option { color:#111; background:#fff; }
-        #__i18n_sticky_ctrl__ select option:checked { background:#e8f0fe; color:#111; }
-        #__i18n_sticky_ctrl__ select:focus { outline:2px solid #5b9dd9; outline-offset:2px; }
-        #__i18n_sticky_ctrl__ button { border:1px solid rgba(255,255,255,.25); background:rgba(255,255,255,.12); color:#fff; }
-        #__i18n_sticky_ctrl__ button:hover { background:rgba(255,255,255,.22); }
+      #__i18n_sticky_ctrl__ {
+        box-sizing:border-box;
+        display:flex;
+        flex-direction:column;
+        gap:12px;
+        align-items:stretch;
+        opacity:1;
+        transform:translateY(0);
+        transition:opacity 160ms ease, transform 160ms ease;
+      }
+      #__i18n_sticky_ctrl__[data-visible="0"] {
+        opacity:0;
+        pointer-events:none;
+        transform:translateY(-8px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_row {
+        display:flex;
+        gap:12px;
+        align-items:center;
+        justify-content:space-between;
+        flex-wrap:wrap;
+        width:100%;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_field {
+        flex:1 1 180px;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+        min-width:0;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_label {
+        font-size:11px;
+        letter-spacing:.2px;
+        opacity:.85;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_select {
+        width:100%;
+        min-width:0;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.35);
+        background:rgba(255,255,255,.08);
+        color:#fff;
+        font-size:13px;
+        padding:6px 10px;
+        outline:none;
+        transition:border-color .18s ease, background .18s ease;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_select option {
+        color:#111;
+        background:#fff;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_select:focus {
+        outline:2px solid rgba(13,110,253,.65);
+        outline-offset:2px;
+        border-color:rgba(13,110,253,.8);
+        background:rgba(255,255,255,.18);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_actions {
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn {
+        border:1px solid rgba(255,255,255,.3);
+        background:rgba(255,255,255,.12);
+        color:#fff;
+        padding:6px 14px;
+        border-radius:10px;
+        font-size:12px;
+        cursor:pointer;
+        transition:background .18s ease, border-color .18s ease, transform .18s ease;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn:hover {
+        background:rgba(255,255,255,.22);
+        transform:translateY(-1px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn:active {
+        transform:translateY(0);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn.is-primary {
+        background:var(--accent);
+        border-color:var(--accent);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn.is-primary:hover {
+        background:rgba(13,110,253,.9);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn:focus-visible {
+        outline:2px solid rgba(13,110,253,.65);
+        outline-offset:2px;
+      }
+      @media (max-width:600px) {
+        #__i18n_sticky_ctrl__ {
+          right:12px;
+          left:12px;
+          top:auto;
+          bottom:20px;
+          max-width:none;
+          width:auto;
+        }
+        #__i18n_sticky_ctrl__ .__i18n_row {
+          flex-direction:column;
+          align-items:stretch;
+          gap:10px;
+        }
+        #__i18n_sticky_ctrl__ .__i18n_actions {
+          width:100%;
+        }
+        #__i18n_sticky_ctrl__ .__i18n_actions .__i18n_btn {
+          flex:1 1 auto;
+          width:100%;
+          text-align:center;
+        }
+      }
     `;
     document.head.appendChild(s);
   }
@@ -814,20 +926,25 @@ if (btnTranslate) {
     ensureStickyControlStyles();
     const wrap=document.createElement("div");
     wrap.id="__i18n_sticky_ctrl__";
-    wrap.style.cssText="position:fixed;top:20px;right:0;z-index:2147483646;display:none;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(0,0,0,.70);backdrop-filter:blur(4px);color:#fff;border-radius:10px;padding:6px 10px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;margin:12px 16px 0 auto;max-width:min(100%,410px);";
+    wrap.className="__i18n_panel";
+    wrap.dataset.i18nSkip="1";
+    wrap.style.cssText="position:fixed;top:35px;right:16px;z-index:2147483646;display:none;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);color:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 16px 32px rgba(0,0,0,.25);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;max-width:min(90vw,380px);width:auto;min-width:0;";
     wrap.setAttribute("aria-hidden","true");
     wrap.setAttribute("data-visible","0");
-    const label=document.createElement("span"); label.textContent="Translate to:"; label.style.cssText="font-size:11px;opacity:.85;";
-    const select=document.createElement("select"); select.style.cssText="font-size:12px;padding:4px 6px;border-radius:8px;outline:none;max-width:220px;";
+    const label=document.createElement("span"); label.className="__i18n_label"; label.textContent="Translate to:";
+    const select=document.createElement("select"); select.className="__i18n_select";
     LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
     const savedLang = (localStorage.getItem(LS_LANG) || "").trim();
     if (savedLang && LANGS.some(l=>l.v === savedLang)) select.value = savedLang;
     else select.value = LANGS[0]?.v || "zh-CN";
     localStorage.setItem(LS_LANG, select.value);
-    const btnGo=document.createElement("button"); btnGo.type="button"; btnGo.textContent="Translate"; btnGo.style.cssText="font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;";
-    const btnReset=document.createElement("button"); btnReset.type="button"; btnReset.textContent="Reset"; btnReset.style.cssText=btnGo.style.cssText;
-    const btnKey=document.createElement("button"); btnKey.type="button"; btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.cssText=btnGo.style.cssText; btnKey.style.display="none";
-    wrap.appendChild(label); wrap.appendChild(select); wrap.appendChild(btnGo); wrap.appendChild(btnReset); wrap.appendChild(btnKey);
+    const btnGo=document.createElement("button"); btnGo.type="button"; btnGo.className="__i18n_btn is-primary"; btnGo.textContent="Translate";
+    const btnReset=document.createElement("button"); btnReset.type="button"; btnReset.className="__i18n_btn"; btnReset.textContent="Reset";
+    const btnKey=document.createElement("button"); btnKey.type="button"; btnKey.className="__i18n_btn"; btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.display="none";
+    const field=document.createElement("div"); field.className="__i18n_field"; field.appendChild(label); field.appendChild(select);
+    const actions=document.createElement("div"); actions.className="__i18n_actions"; actions.appendChild(btnGo); actions.appendChild(btnReset);
+    const row=document.createElement("div"); row.className="__i18n_row"; row.appendChild(field); row.appendChild(actions);
+    wrap.appendChild(row); wrap.appendChild(btnKey);
     select.addEventListener("change", ()=>{
       const v = String(select.value || "").trim();
       localStorage.setItem(LS_LANG, v);
@@ -888,3 +1005,21 @@ if (btnTranslate) {
 
 </script>
 <!-- i18n Gemini Translate [end  ] -->
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
