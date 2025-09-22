@@ -147,9 +147,9 @@
 
 <!-- Simple toolbar for screen -->
 <div class="toolbar">
-  <button class="btn" id="btn-print">Print</button>
-  <button class="btn" id="btn-add-rows">Add 20 Rows</button>
-  <button class="btn" id="btn-ai-translate">AI Translate</button>
+  <button type="button" class="btn" id="btn-print">Print</button>
+  <button type="button" class="btn" id="btn-add-rows">Add 20 Rows</button>
+  <button type="button" class="btn" id="btn-ai-translate">AI Translate</button>
   <span style="margin-left:auto;color:#666;">A4 printable sample invoice • HTML/CSS/JS only</span>
 </div>
 
@@ -455,8 +455,8 @@ if (btnTranslate) {
     const bar=document.createElement("div"); bar.style.cssText="height:100%;width:0%;background:linear-gradient(90deg,#fff,#ddd);transition:width .2s ease;"; barWrap.appendChild(bar);
     const details=document.createElement("div"); details.style.cssText="font-size:12px;opacity:.75;text-align:center;";
     const btns=document.createElement("div"); btns.style.cssText="display:flex;gap:8px;";
-    const btnCancel=document.createElement("button"); btnCancel.textContent="Cancel"; btnCancel.style.cssText="padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:12px;";
-    const btnClose=document.createElement("button"); btnClose.textContent="Close"; btnClose.style.cssText=btnCancel.style.cssText+";display:none;";
+    const btnCancel=document.createElement("button"); btnCancel.type="button"; btnCancel.textContent="Cancel"; btnCancel.style.cssText="padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:12px;";
+    const btnClose=document.createElement("button"); btnClose.type="button"; btnClose.textContent="Close"; btnClose.style.cssText=btnCancel.style.cssText+";display:none;";
     btns.appendChild(btnCancel); btns.appendChild(btnClose);
     box.appendChild(spinner); box.appendChild(title); box.appendChild(progress); box.appendChild(barWrap); box.appendChild(details); box.appendChild(btns);
     overlay.appendChild(box); document.body.appendChild(overlay);
@@ -476,6 +476,7 @@ if (btnTranslate) {
 
   // ---------- Utils ----------
   const TAG_SKIP=new Set(["SCRIPT","STYLE","NOSCRIPT","IFRAME","OBJECT","EMBED","CANVAS","SVG","META","HEAD","TITLE","LINK"]);
+  const WEAK_CONTAINER_TAGS = new Set(["SPAN","FONT","B","I","EM","STRONG","SMALL","SUP","SUB","MARK","LABEL","CODE","ABBR"]);
   const isHiddenByAttr=(el)=>el?.hasAttribute?.("hidden")||el?.getAttribute?.("aria-hidden")==="true";
   const isVisible=(el)=>{ if(!el) return false; for(let n=el;n&&n.nodeType===1;n=n.parentElement){ if(isHiddenByAttr(n)) return false; const cs=getComputedStyle(n); if(cs.display==="none"||cs.visibility==="hidden"||cs.visibility==="collapse"||parseFloat(cs.opacity)===0) return false; } const r=el.getBoundingClientRect?.(); return !!r && r.width>0 && r.height>0; };
   const normalizeWS=(s)=>s.replace(/\s+/g," ").trim();
@@ -484,27 +485,33 @@ if (btnTranslate) {
   function nearestContainer(el){
     let n = el;
     while (n && n !== document.body) {
+      if (n.dataset && n.dataset.i18nContainer === "1") return n;
       const cs = getComputedStyle(n);
-      if (cs.display && cs.display !== "inline") return n;
+      if (cs.display && cs.display !== "inline") {
+        if (!WEAK_CONTAINER_TAGS.has(n.tagName)) return n;
+      }
       n = n.parentElement;
     }
-    return el.closest("td,th") || el || document.body;
+    const fallback = el.closest("[data-i18n-container],td,th,section,article,div") || el.closest("body") || document.body;
+    return fallback;
   }
 
   // Lock container pixel size; return previous inline style so we can restore.
-  function __i18n_lockContainerSize(el) {
+  function __i18n_lockContainerSize(el, lock = true) {
     const prevStyle = el.getAttribute("style") ?? null;
     const W = Math.max(1, el.offsetWidth);
     const H = Math.max(1, el.offsetHeight);
-    el.style.boxSizing = "border-box";
-    el.style.width = W + "px";
-    el.style.minWidth = W + "px";
-    el.style.maxWidth = W + "px";
-    el.style.height = H + "px";
-    el.style.minHeight = H + "px";
-    el.style.maxHeight = H + "px";
-    el.style.overflow = "hidden";
-    return { W, H, prevStyle };
+    if (lock) {
+      el.style.boxSizing = "border-box";
+      el.style.width = W + "px";
+      el.style.minWidth = W + "px";
+      el.style.maxWidth = W + "px";
+      el.style.height = H + "px";
+      el.style.minHeight = H + "px";
+      el.style.maxHeight = H + "px";
+      el.style.overflow = "hidden";
+    }
+    return { W, H, prevStyle, locked: lock };
   }
 
   // ---------- Collect & group by container (and lock sizes) ----------
@@ -532,22 +539,36 @@ if (btnTranslate) {
       const key = it.container;
       if (seen.has(key)) continue;
 
-      const scaler = document.createElement("span");
-      scaler.className = "__i18n_scaler";
-      scaler.style.transformOrigin = "left top";
-      scaler.style.transition = `transform ${SCALE_TRANSITION_MS}ms ease-out`;
-      const cs = getComputedStyle(key);
-      scaler.style.display = (cs.display === "inline") ? "inline-block" : "block";
+      let scaler = key.__i18nScaler;
+      let content = key.__i18nContent;
+      let moved = key.__i18nMoved;
+      const csOriginal = getComputedStyle(key);
 
-      const content = document.createElement("span");
-      content.className = "__i18n_content";
+      if (!scaler || !content || !key.contains(scaler) || !scaler.contains(content)) {
+        moved = [];
+        scaler = document.createElement("span");
+        scaler.className = "__i18n_scaler";
+        scaler.style.transformOrigin = "left top";
+        scaler.style.transition = `transform ${SCALE_TRANSITION_MS}ms ease-out`;
+        scaler.style.display = (csOriginal.display === "inline") ? "inline-block" : "block";
+        content = document.createElement("span");
+        content.className = "__i18n_content";
+        while (key.firstChild) { const ch = key.firstChild; moved.push(ch); content.appendChild(ch); }
+        scaler.appendChild(content);
+        key.appendChild(scaler);
+        key.dataset.i18nContainer = "1";
+        key.__i18nScaler = scaler;
+        key.__i18nContent = content;
+        key.__i18nMoved = moved;
+      } else {
+        if (!Array.isArray(moved)) moved = key.__i18nMoved = [];
+        scaler.style.transformOrigin = "left top";
+        scaler.style.transition = `transform ${SCALE_TRANSITION_MS}ms ease-out`;
+        scaler.style.display = (csOriginal.display === "inline") ? "inline-block" : "block";
+      }
 
-      const moved = [];
-      while (key.firstChild) { const ch = key.firstChild; moved.push(ch); content.appendChild(ch); }
-      scaler.appendChild(content);
-      key.appendChild(scaler);
-
-      const { W, H, prevStyle } = __i18n_lockContainerSize(key);
+      const shouldLock = !WEAK_CONTAINER_TAGS.has(key.tagName);
+      const { W, H, prevStyle } = __i18n_lockContainerSize(key, shouldLock);
       scaler.style.width = "100%";
       scaler.style.height = "100%";
 
@@ -603,6 +624,7 @@ if (btnTranslate) {
       "You MUST return the SAME ids; do not omit or invent ids.",
       "Do NOT merge, split, drop, or add items.",
       "Preserve numbers, dates, IDs/SKU codes and currency codes/symbols as appropriate.",
+      "Leave currency prefixes/symbols such as US$, RM, TW$, and $ unchanged.",
       "No code fences."
     ].join("\n");
   }
@@ -792,17 +814,24 @@ if (btnTranslate) {
     ensureStickyControlStyles();
     const wrap=document.createElement("div");
     wrap.id="__i18n_sticky_ctrl__";
-    wrap.style.cssText="position:sticky;top:16px;z-index:2147483646;display:none;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(0,0,0,.70);backdrop-filter:blur(4px);color:#fff;border-radius:10px;padding:6px 10px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;margin:12px 16px 0 auto;max-width:min(100%,360px);";
+    wrap.style.cssText="position:fixed;top:20px;right:0;z-index:2147483646;display:none;gap:6px;align-items:center;flex-wrap:wrap;background:rgba(0,0,0,.70);backdrop-filter:blur(4px);color:#fff;border-radius:10px;padding:6px 10px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;margin:12px 16px 0 auto;max-width:min(100%,410px);";
     wrap.setAttribute("aria-hidden","true");
     wrap.setAttribute("data-visible","0");
     const label=document.createElement("span"); label.textContent="Translate to:"; label.style.cssText="font-size:11px;opacity:.85;";
     const select=document.createElement("select"); select.style.cssText="font-size:12px;padding:4px 6px;border-radius:8px;outline:none;max-width:220px;";
     LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
-    select.value = localStorage.getItem(LS_LANG) || "zh-CN";
-    const btnGo=document.createElement("button"); btnGo.textContent="Translate"; btnGo.style.cssText="font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;";
-    const btnUndo=document.createElement("button"); btnUndo.textContent="Undo"; btnUndo.style.cssText=btnGo.style.cssText;
-    const btnKey=document.createElement("button"); btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.cssText=btnGo.style.cssText;
+    const savedLang = (localStorage.getItem(LS_LANG) || "").trim();
+    if (savedLang && LANGS.some(l=>l.v === savedLang)) select.value = savedLang;
+    else select.value = LANGS[0]?.v || "zh-CN";
+    localStorage.setItem(LS_LANG, select.value);
+    const btnGo=document.createElement("button"); btnGo.type="button"; btnGo.textContent="Translate"; btnGo.style.cssText="font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;";
+    const btnUndo=document.createElement("button"); btnUndo.type="button"; btnUndo.textContent="Undo"; btnUndo.style.cssText=btnGo.style.cssText;
+    const btnKey=document.createElement("button"); btnKey.type="button"; btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.cssText=btnGo.style.cssText; btnKey.style.display="none";
     wrap.appendChild(label); wrap.appendChild(select); wrap.appendChild(btnGo); wrap.appendChild(btnUndo); wrap.appendChild(btnKey);
+    select.addEventListener("change", ()=>{
+      const v = String(select.value || "").trim();
+      localStorage.setItem(LS_LANG, v);
+    });
     const toolbar=document.querySelector(".toolbar");
     if(toolbar && toolbar.parentNode){
       toolbar.parentNode.insertBefore(wrap, toolbar.nextSibling);
@@ -835,6 +864,10 @@ if (btnTranslate) {
     el.setAttribute("data-visible", shouldShow ? "1" : "0");
     el.style.display = shouldShow ? "flex" : "none";
     if(shouldShow){
+      if (stickySelectEl) {
+        const saved = (localStorage.getItem(LS_LANG) || "").trim();
+        if (saved && LANGS.some(l=>l.v === saved)) stickySelectEl.value = saved;
+      }
       el.removeAttribute("aria-hidden");
       requestAnimationFrame(()=> stickySelectEl?.focus());
       if(toggleBtn){ toggleBtn.setAttribute("aria-pressed","true"); toggleBtn.classList.add("is-active"); }
