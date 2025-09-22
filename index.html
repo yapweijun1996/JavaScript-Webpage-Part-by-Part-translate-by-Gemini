@@ -825,9 +825,9 @@ if (btnTranslate) {
     else select.value = LANGS[0]?.v || "zh-CN";
     localStorage.setItem(LS_LANG, select.value);
     const btnGo=document.createElement("button"); btnGo.type="button"; btnGo.textContent="Translate"; btnGo.style.cssText="font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;";
-    const btnUndo=document.createElement("button"); btnUndo.type="button"; btnUndo.textContent="Undo"; btnUndo.style.cssText=btnGo.style.cssText;
+    const btnReset=document.createElement("button"); btnReset.type="button"; btnReset.textContent="Reset"; btnReset.style.cssText=btnGo.style.cssText;
     const btnKey=document.createElement("button"); btnKey.type="button"; btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.cssText=btnGo.style.cssText; btnKey.style.display="none";
-    wrap.appendChild(label); wrap.appendChild(select); wrap.appendChild(btnGo); wrap.appendChild(btnUndo); wrap.appendChild(btnKey);
+    wrap.appendChild(label); wrap.appendChild(select); wrap.appendChild(btnGo); wrap.appendChild(btnReset); wrap.appendChild(btnKey);
     select.addEventListener("change", ()=>{
       const v = String(select.value || "").trim();
       localStorage.setItem(LS_LANG, v);
@@ -844,7 +844,7 @@ if (btnTranslate) {
     stickySelectEl = select;
 
     btnGo.addEventListener("click", ()=> runTranslate(select.value));
-    btnUndo.addEventListener("click", ()=>{ if(typeof window.__i18nUndo==="function") window.__i18nUndo(); else console.log("Nothing to undo yet."); });
+    btnReset.addEventListener("click", ()=>{ window.location.reload(); });
     btnKey.addEventListener("click", ()=>{
       const curr=(window.geminiApiKey || localStorage.getItem(LS_KEY) || "");
       const k=prompt("Gemini API key (leave blank to clear):", curr||"");
