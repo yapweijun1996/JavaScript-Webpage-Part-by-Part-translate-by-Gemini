@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Invoice — A4 Printable (HTML/CSS/JS)</title>
+<style>
+  :root{
+    --a4-w:210mm;
+    --a4-h:297mm;
+    --page-pad:12mm;
+    --border:#111;
+    --muted:#f6f6f6;
+    --ink:#111;
+    --ink-soft:#333;
+    --accent:#0d6efd;
+  }
+
+  /* Screen layout */
+  body{
+    margin:0;
+    background:#eee;
+    color:var(--ink);
+    font:13px/1.45 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
+  }
+  .toolbar{
+    position:sticky; top:0; z-index:999;
+    background:#fff; border-bottom:1px solid #ddd;
+    padding:10px; display:flex; gap:8px; align-items:center;
+  }
+  .toolbar .btn{
+    border:1px solid #ccc; background:#fff; padding:8px 12px; cursor:pointer; border-radius:8px;
+  }
+  .toolbar .btn:hover{ border-color:#999 }
+  .wrap{
+    display:flex; justify-content:center; padding:20px;
+  }
+  .page{
+    width:var(--a4-w);
+    min-height:var(--a4-h);
+    background:#fff;
+    color:var(--ink);
+    box-shadow:0 8px 30px rgba(0,0,0,.12);
+  }
+  .sheet{
+    padding:var(--page-pad);
+  }
+
+  /* Header */
+  .header{
+    display:grid; grid-template-columns:1fr auto; gap:12px; align-items:start;
+    border-bottom:2px solid var(--border); padding-bottom:10px; margin-bottom:12px;
+  }
+  .brand{
+    display:flex; gap:12px; align-items:center;
+  }
+  .logo{
+    width:48px; height:48px; border-radius:10px; border:1px solid #ddd; display:grid; place-items:center;
+    font-weight:700; color:#fff; background:linear-gradient(135deg, #4a7, #2a6);
+  }
+  .brand h1{ margin:0; font-size:18px; letter-spacing:.2px }
+  .brand p{ margin:2px 0 0; color:var(--ink-soft) }
+  .inv-meta{
+    text-align:right; font-size:13px;
+  }
+  .inv-meta h2{ margin:0; font-size:20px; letter-spacing:.3px }
+  .inv-meta .badge{
+    display:inline-block; padding:2px 8px; border-radius:999px; border:1px solid #ddd; margin-top:6px;
+  }
+
+  /* Bill/Ship blocks */
+  .blocks{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; margin:12px 0;
+  }
+  .block{
+    border:1px solid #ddd; border-radius:10px; padding:10px;
+  }
+  .block h3{
+    margin:0 0 6px; font-size:12px; letter-spacing:.5px; color:#555; text-transform:uppercase;
+  }
+  .block p{ margin:0; white-space:pre-line }
+
+  /* Items table */
+  table{
+    border-collapse:separate; border-spacing:0; width:100%;
+    margin-top:6px; font-size:12.5px;
+  }
+  thead th{
+    background:var(--muted); color:#000;
+    border-top:1px solid var(--border);
+    border-bottom:1px solid var(--border);
+    padding:8px 8px;
+    text-align:left;
+  }
+  tbody td{
+    padding:8px 8px; border-bottom:1px solid #eee; vertical-align:top; background:#fff;
+  }
+  tfoot td{
+    padding:6px 8px; border-top:1px solid var(--border);
+  }
+  .num{ text-align:right; white-space:nowrap; }
+  .desc-col .sku{ color:#666; font-size:11.5px; display:block; margin-top:2px; }
+  .desc-col .remark{ color:#333; font-size:11.5px; display:block; margin-top:4px; }
+
+  /* Totals area */
+  .totals{
+    width:45%; margin-left:auto; border:1px solid #ddd; border-radius:10px; overflow:hidden;
+  }
+  .totals table{ margin:0; }
+  .totals tr td{ background:#fff; }
+  .totals tr td.label{ color:#333 }
+  .totals .grand td{ font-size:14px; font-weight:700; }
+
+  /* Notes */
+  .notes{
+    margin-top:10px; font-size:12px; color:#444;
+  }
+
+  /* Footer: Page X of Y (print) */
+  .footer{
+    position:fixed; bottom:0; left:0; right:0;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:6px var(--page-pad); font-size:11.5px; color:#555; background:transparent;
+  }
+  .page-counter::after{
+    content:"Page " counter(page) " of " counter(pages);
+  }
+
+  /* Keep header/footer repeating in print, avoid row breaks */
+  thead{ display:table-header-group; }
+  tfoot{ display:table-footer-group; }
+  tr, img{ page-break-inside:avoid; break-inside:avoid; }
+
+  /* Print styles */
+  @media print{
+    @page{ size:A4; margin:12mm; }
+    body{ background:#fff; }
+    .toolbar, .wrap { padding:0; }
+    .toolbar{ display:none !important; }
+    .page{ width:auto; min-height:auto; box-shadow:none; }
+    .sheet{ padding:0; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Simple toolbar for screen -->
+<div class="toolbar">
+  <button class="btn" id="btn-print">Print</button>
+  <button class="btn" id="btn-add-rows">Add 20 Rows</button>
+  <span style="margin-left:auto;color:#666;">A4 printable sample invoice • HTML/CSS/JS only</span>
+</div>
+
+<div class="wrap">
+  <div class="page">
+    <div class="sheet">
+      <!-- Header -->
+      <div class="header">
+        <div class="brand">
+          <div class="logo">AC</div>
+          <div>
+            <h1>Acme Commerce Pte Ltd</h1>
+            <p>21 Example Street, #08-03, Singapore 049999 • +65 6123 4567 • billing@acme.com</p>
+          </div>
+        </div>
+        <div class="inv-meta">
+          <h2>INVOICE</h2>
+          <div class="badge">Original</div>
+          <div style="margin-top:8px;">
+            <div><strong>Invoice #:</strong> INV-2025-0098</div>
+            <div><strong>Date:</strong> 22 Sep 2025</div>
+            <div><strong>Terms:</strong> 30 days</div>
+            <div><strong>PO Ref:</strong> PO-77831</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Blocks -->
+      <div class="blocks">
+        <div class="block">
+          <h3>Bill To</h3>
+          <p><strong>Globe3 ERP Sdn Bhd</strong>
+Attn: Finance Dept
+123 Jalan Contoh, Johor Bahru 80000
+finance@globe3.com • +60 7-123 4567</p>
+        </div>
+        <div class="block">
+          <h3>Ship To</h3>
+          <p>Same as Bill To</p>
+        </div>
+        <div class="block">
+          <h3>Payment</h3>
+          <p><strong>Bank:</strong> DBS Bank
+<strong>Acct:</strong> 012-345678-9
+<strong>Swift:</strong> DBSSSGSG
+<strong>Ref:</strong> INV-2025-0098</p>
+        </div>
+      </div>
+
+      <!-- Items -->
+      <table id="items">
+        <thead>
+          <tr>
+            <th style="width:38%;">Description</th>
+            <th style="width:10%;">Qty</th>
+            <th style="width:12%;">Unit</th>
+            <th style="width:15%;">Unit Price</th>
+            <th style="width:12%;">Tax %</th>
+            <th style="width:13%;">Amount</th>
+          </tr>
+        </thead>
+        <tbody id="tbody">
+          <!-- Sample rows -->
+          <tr>
+            <td class="desc-col">
+              Website maintenance — September
+              <span class="sku">SKU: WEB-MNT-SEP</span>
+              <span class="remark">Includes uptime monitoring & minor bug fixes.</span>
+            </td>
+            <td class="num" data-type="qty">1</td>
+            <td>month</td>
+            <td class="num" data-type="price">1200.00</td>
+            <td class="num" data-type="tax">8</td>
+            <td class="num amount"></td>
+          </tr>
+          <tr>
+            <td class="desc-col">
+              Cloud hosting (t3.medium equiv.)
+              <span class="sku">SKU: CLOUD-MID</span>
+              <span class="remark">Production instance, Singapore region.</span>
+            </td>
+            <td class="num" data-type="qty">2</td>
+            <td>instance</td>
+            <td class="num" data-type="price">430.50</td>
+            <td class="num" data-type="tax">8</td>
+            <td class="num amount"></td>
+          </tr>
+          <tr>
+            <td class="desc-col">
+              Email deliverability audit
+              <span class="sku">SKU: MAIL-AUDIT</span>
+              <span class="remark">SPF/DKIM/DMARC review + recommendations.</span>
+            </td>
+            <td class="num" data-type="qty">1</td>
+            <td>job</td>
+            <td class="num" data-type="price">650.00</td>
+            <td class="num" data-type="tax">0</td>
+            <td class="num amount"></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="6" style="padding:0; border-top:none;">
+              <div class="totals" id="totals">
+                <table>
+                  <tr>
+                    <td class="label">Subtotal (excl. tax)</td>
+                    <td class="num" id="subtot">0.00</td>
+                  </tr>
+                  <tr>
+                    <td class="label">Tax</td>
+                    <td class="num" id="taxtot">0.00</td>
+                  </tr>
+                  <tr class="grand">
+                    <td class="label">Grand Total</td>
+                    <td class="num" id="grand">0.00</td>
+                  </tr>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <!-- Notes -->
+      <div class="notes">
+        <strong>Notes:</strong> Thank you for your business. Please remit within 30 days. Late payment may incur 1.5% monthly interest.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Footer (prints on every page) -->
+<div class="footer">
+  <div>Acme Commerce Pte Ltd • UEN 201912345Z</div>
+  <div class="page-counter"></div>
+</div>
+
+<script>
+  // --- Utility: precise rounding to 2 dp to avoid 1c drift (banker’s rounding optional) ---
+  function round2(n){
+    // Avoid floating error: work in cents
+    const cents = Math.round((+n + Number.EPSILON) * 100);
+    return (cents/100).toFixed(2);
+  }
+
+  // --- Compute row amounts & totals ---
+  function compute(){
+    const tbody = document.getElementById('tbody');
+    let sub = 0, tax = 0;
+
+    for (const tr of tbody.querySelectorAll('tr')) {
+      const qtyEl   = tr.querySelector('[data-type="qty"]');
+      const priceEl = tr.querySelector('[data-type="price"]');
+      const taxEl   = tr.querySelector('[data-type="tax"]');
+      const amtEl   = tr.querySelector('.amount');
+
+      const qty   = parseFloat(qtyEl?.textContent.replace(/[, ]/g,'')) || 0;
+      const price = parseFloat(priceEl?.textContent.replace(/[, ]/g,'')) || 0;
+      const taxp  = parseFloat(taxEl?.textContent.replace(/[, ]/g,'')) || 0;
+
+      const base = qty * price;
+      const rowTax = base * (taxp/100);
+      const rowAmt = base + rowTax;
+
+      sub += base;
+      tax += rowTax;
+
+      if (amtEl) amtEl.textContent = round2(rowAmt);
+    }
+
+    const grand = sub + tax;
+    document.getElementById('subtot').textContent = round2(sub);
+    document.getElementById('taxtot').textContent = round2(tax);
+    document.getElementById('grand').textContent  = round2(grand);
+  }
+
+  // --- Demo: Add many rows to test multi-page printing ---
+  function addRows(n=20){
+    const tbody = document.getElementById('tbody');
+    const samples = [
+      ["Managed database backup (daily snapshots)", "DB-BKP-DAILY", "Includes retention & restore testing", 1, "job", 280.00, 8],
+      ["CDN data transfer", "CDN-XFER", "APAC region, fair-usage", 3, "TB", 95.75, 8],
+      ["Security patching", "SEC-PATCH", "Kernel updates + reboot windows", 1, "bundle", 320.00, 0],
+      ["Uptime SLA 99.9%", "SLA-999", "Monitoring + incident response", 1, "mo", 150.00, 8],
+      ["Consulting hours", "CONSULT", "Performance tuning session", 6, "hour", 120.00, 0],
+      ["QA automation run", "QA-AUTO", "Nightly suite", 4, "run", 45.00, 8],
+    ];
+    for (let i=0;i<n;i++){
+      const s = samples[i % samples.length];
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="desc-col">
+          ${s[0]}
+          <span class="sku">SKU: ${s[1]}</span>
+          <span class="remark">${s[2]}</span>
+        </td>
+        <td class="num" data-type="qty">${s[3]}</td>
+        <td>${s[4]}</td>
+        <td class="num" data-type="price">${s[5].toFixed(2)}</td>
+        <td class="num" data-type="tax">${s[6]}</td>
+        <td class="num amount"></td>`;
+      tbody.appendChild(tr);
+    }
+    compute();
+  }
+
+  // Bind UI
+  document.getElementById('btn-print').addEventListener('click', () => {
+    compute();
+    window.print();
+  });
+  document.getElementById('btn-add-rows').addEventListener('click', () => addRows(20));
+
+  // Initial compute
+  compute();
+</script>
+</body>
+</html>
+
+<!-- i18n Gemini Translate [start] -->
+<script>
+// === I18N Translate-In-Place — Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
+// Uses your Gemini body format (model/topP/response_mime_type/thinkingBudget/safetySettings).
+(() => {
+  // ---------------- Settings ----------------
+  const MODEL = "gemini-2.5-flash-lite";
+  const TEMPERATURE = 0;     // deterministic; change if you want
+  const TOP_P = 1;           // per your request
+  const RESP_MIME = "application/json";
+  const THINK_BUDGET = 512;  // per your request
+
+  const MAX_BYTES_PER_BATCH = 20000; // smaller = safer
+  const ONLY_VISIBLE = true;
+  const NORMALIZE_WS = true;
+  const LS_KEY = "gemini_api_key";
+  const LS_LANG = "i18n_target_lang";
+  const AUTO_CLOSE_MS = 900;
+  const MIN_SCALE = 0.6;
+  const SCALE_TRANSITION_MS = 80;
+
+  const LANGS = [
+    { v: "zh-CN", label: "Mandarin — Mainland (简体)", instr: "Translate to Simplified Chinese (Mainland style)." },
+    { v: "zh-TW", label: "Mandarin — Taiwan (繁體)",   instr: "Translate to Traditional Chinese (Taiwan style)." },
+    { v: "en",    label: "English",                    instr: "Translate to English." },
+    { v: "ja",    label: "Japanese (日本語)",              instr: "Translate to Japanese." },
+    { v: "vi",    label: "Vietnamese (Tiếng Việt)",     instr: "Translate to Vietnamese." },
+    { v: "hi",    label: "Hindi (हिन्दी)",                instr: "Translate to Hindi." },
+    { v: "ko",    label: "Korean (한국어)",               instr: "Translate to Korean." },
+    { v: "th",    label: "Thai (ไทย)",                   instr: "Translate to Thai." },
+    { v: "ms",    label: "Malay (Bahasa Melayu)",       instr: "Translate to Malay." },
+    { v: "id",    label: "Indonesian (Bahasa Indonesia)", instr: "Translate to Indonesian." },
+    { v: "fil",   label: "Filipino (Tagalog)",          instr: "Translate to Filipino (Tagalog)." },
+  ];
+
+  // ---------- Key helpers ----------
+  function getApiKey() {
+    let k = (window.geminiApiKey || "").trim();
+    if (!k) k = (localStorage.getItem(LS_KEY) || "").trim();
+    if (!k) {
+      k = (prompt("Enter your Gemini API key (will be saved to localStorage):") || "").trim();
+      if (!k) throw new Error("Missing API key.");
+      localStorage.setItem(LS_KEY, k);
+    }
+    window.geminiApiKey = k;
+    if ((localStorage.getItem(LS_KEY) || "").trim() !== k) localStorage.setItem(LS_KEY, k);
+    return k;
+  }
+  window.setGeminiKey = (k) => { const v = String(k||"").trim(); if (!v) throw new Error("Empty key."); window.geminiApiKey=v; localStorage.setItem(LS_KEY,v); console.log("Gemini key set."); };
+  window.clearGeminiKey = () => { window.geminiApiKey=""; localStorage.removeItem(LS_KEY); console.log("Gemini key cleared."); };
+
+  // ---------- Loader ----------
+  function createFullscreenLoader() {
+    const old = document.getElementById("__i18n_loader_overlay__"); if (old) old.remove();
+    const overlay = document.createElement("div");
+    overlay.id="__i18n_loader_overlay__";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);";
+    const style = document.createElement("style"); style.textContent = "@keyframes __spin__{to{transform:rotate(360deg)}}"; document.documentElement.appendChild(style);
+
+    const box=document.createElement("div");
+    box.style.cssText="min-width:260px;max-width:90vw;background:#111;color:#fff;border-radius:16px;padding:20px 24px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;gap:14px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;";
+    const spinner=document.createElement("div"); spinner.style.cssText="width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:#fff;animation:__spin__ 1s linear infinite;";
+    const title=document.createElement("div"); title.textContent="Translating webpage…"; title.style.cssText="font-weight:600;font-size:16px;text-align:center;";
+    const progress=document.createElement("div"); progress.textContent="Preparing…"; progress.style.cssText="font-size:13px;opacity:.85;text-align:center;";
+    const barWrap=document.createElement("div"); barWrap.style.cssText="width:100%;height:8px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden;";
+    const bar=document.createElement("div"); bar.style.cssText="height:100%;width:0%;background:linear-gradient(90deg,#fff,#ddd);transition:width .2s ease;"; barWrap.appendChild(bar);
+    const details=document.createElement("div"); details.style.cssText="font-size:12px;opacity:.75;text-align:center;";
+    const btns=document.createElement("div"); btns.style.cssText="display:flex;gap:8px;";
+    const btnCancel=document.createElement("button"); btnCancel.textContent="Cancel"; btnCancel.style.cssText="padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:12px;";
+    const btnClose=document.createElement("button"); btnClose.textContent="Close"; btnClose.style.cssText=btnCancel.style.cssText+";display:none;";
+    btns.appendChild(btnCancel); btns.appendChild(btnClose);
+    box.appendChild(spinner); box.appendChild(title); box.appendChild(progress); box.appendChild(barWrap); box.appendChild(details); box.appendChild(btns);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+
+    let cancelled=false, currentAbort=null, timer=null;
+    btnCancel.addEventListener("click", () => { cancelled=true; if(currentAbort) try{currentAbort.abort()}catch{}; progress.textContent="Cancelling…"; details.textContent="Stopping current request"; });
+    btnClose.addEventListener("click", () => { clearTimeout(timer); overlay.remove(); style.remove(); });
+    document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") btnCancel.click(); }, { once:true });
+
+    function setProgress(pct, text, sub){
+      const c=Math.max(0,Math.min(100,Math.round(pct)));
+      bar.style.width=c+"%"; if(text) progress.textContent=text; if(sub!==undefined) details.textContent=sub||"";
+      if(c>=100){ btnCancel.style.display="none"; btnClose.style.display="inline-block"; if(!timer) timer=setTimeout(()=>{ overlay.remove(); style.remove(); }, AUTO_CLOSE_MS); }
+    }
+    return { setProgress, setAbortController:(ac)=>{ currentAbort=ac; }, isCancelled:()=>cancelled, close:()=>{ clearTimeout(timer); overlay.remove(); style.remove(); } };
+  }
+
+  // ---------- Utils ----------
+  const TAG_SKIP=new Set(["SCRIPT","STYLE","NOSCRIPT","IFRAME","OBJECT","EMBED","CANVAS","SVG","META","HEAD","TITLE","LINK"]);
+  const isHiddenByAttr=(el)=>el?.hasAttribute?.("hidden")||el?.getAttribute?.("aria-hidden")==="true";
+  const isVisible=(el)=>{ if(!el) return false; for(let n=el;n&&n.nodeType===1;n=n.parentElement){ if(isHiddenByAttr(n)) return false; const cs=getComputedStyle(n); if(cs.display==="none"||cs.visibility==="hidden"||cs.visibility==="collapse"||parseFloat(cs.opacity)===0) return false; } const r=el.getBoundingClientRect?.(); return !!r && r.width>0 && r.height>0; };
+  const normalizeWS=(s)=>s.replace(/\s+/g," ").trim();
+  const bytes = (s)=> new Blob([s]).size;
+
+  function nearestContainer(el){
+    let n = el;
+    while (n && n !== document.body) {
+      const cs = getComputedStyle(n);
+      if (cs.display && cs.display !== "inline") return n;
+      n = n.parentElement;
+    }
+    return el.closest("td,th") || el || document.body;
+  }
+
+  // Lock container pixel size; return previous inline style so we can restore.
+  function __i18n_lockContainerSize(el) {
+    const prevStyle = el.getAttribute("style") ?? null;
+    const W = Math.max(1, el.offsetWidth);
+    const H = Math.max(1, el.offsetHeight);
+    el.style.boxSizing = "border-box";
+    el.style.width = W + "px";
+    el.style.minWidth = W + "px";
+    el.style.maxWidth = W + "px";
+    el.style.height = H + "px";
+    el.style.minHeight = H + "px";
+    el.style.maxHeight = H + "px";
+    el.style.overflow = "hidden";
+    return { W, H, prevStyle };
+  }
+
+  // ---------- Collect & group by container (and lock sizes) ----------
+  function collectGroups(){
+    const items = [];
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const raw = node.nodeValue;
+        if (!raw || !raw.trim()) return NodeFilter.FILTER_REJECT;
+        const p = node.parentElement;
+        if (!p || TAG_SKIP.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        if (ONLY_VISIBLE && !isVisible(p)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    for (let n; (n = walker.nextNode());) {
+      const p = n.parentElement;
+      const text = NORMALIZE_WS ? normalizeWS(n.nodeValue) : n.nodeValue;
+      if (text) items.push({ node: n, container: nearestContainer(p), text });
+    }
+
+    const groups = [];
+    const seen = new Set();
+    for (const it of items) {
+      const key = it.container;
+      if (seen.has(key)) continue;
+
+      const scaler = document.createElement("span");
+      scaler.className = "__i18n_scaler";
+      scaler.style.transformOrigin = "left top";
+      scaler.style.transition = `transform ${SCALE_TRANSITION_MS}ms ease-out`;
+      const cs = getComputedStyle(key);
+      scaler.style.display = (cs.display === "inline") ? "inline-block" : "block";
+
+      const content = document.createElement("span");
+      content.className = "__i18n_content";
+
+      const moved = [];
+      while (key.firstChild) { const ch = key.firstChild; moved.push(ch); content.appendChild(ch); }
+      scaler.appendChild(content);
+      key.appendChild(scaler);
+
+      const { W, H, prevStyle } = __i18n_lockContainerSize(key);
+      scaler.style.width = "100%";
+      scaler.style.height = "100%";
+
+      const originalText = new Map();
+      const tw = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null);
+      for (let t; (t = tw.nextNode());) originalText.set(t, t.nodeValue);
+
+      groups.push({ container: key, scaler, content, width: W, height: H, prevStyle, nodes: [], moved, originalText });
+      seen.add(key);
+    }
+
+    for (const it of items) {
+      const g = groups.find(gr => gr.container === it.container);
+      if (g) g.nodes.push(it);
+    }
+    return groups;
+  }
+
+  // ---------- Strong Undo ----------
+  function buildUndo(groups){
+    return () => {
+      for (const g of groups) {
+        try {
+          g.originalText.forEach((val, node) => { try { node.nodeValue = val; } catch {} });
+          for (const ch of g.moved) { try { g.container.insertBefore(ch, g.scaler); } catch {} }
+          g.scaler.remove();
+          if (g.prevStyle === null) g.container.removeAttribute("style");
+          else g.container.setAttribute("style", g.prevStyle);
+        } catch (e) { console.warn("Undo error on a container:", e); }
+      }
+      console.log(`Undo complete: restored ${groups.length} containers.`);
+    };
+  }
+
+  // ---------- Batching ----------
+  function chunkSrc(objs, maxBytes){
+    const batches=[]; let cur=[], curBytes=0;
+    for (const o of objs) {
+      const add = bytes(o.text);
+      if (cur.length && curBytes + add > maxBytes) { batches.push(cur); cur=[o]; curBytes=add; }
+      else { cur.push(o); curBytes += add; }
+    }
+    if (cur.length) batches.push(cur);
+    return batches;
+  }
+
+  // ---------- Gemini (ID-safe) using YOUR body format ----------
+  function mkInstruction(instr){
+    return [
+      instr,
+      "You will receive a JSON array 'src' with items {\"id\": <number>, \"text\": <string>}.",
+      "Return STRICT JSON: {\"dst\": [{\"id\": <same number>, \"text\": <translated string>}, ...]}",
+      "You MUST return the SAME ids; do not omit or invent ids.",
+      "Do NOT merge, split, drop, or add items.",
+      "Preserve numbers, dates, IDs/SKU codes and currency codes/symbols as appropriate.",
+      "No code fences."
+    ].join("\n");
+  }
+
+  async function callGemini(API_KEY, srcArr, instr, setAbort){
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(API_KEY)}`;
+
+    const contents = [{
+      role: "user",
+      parts: [{ text: `${mkInstruction(instr)}\n\nsrc = ${JSON.stringify(srcArr)}` }]
+    }];
+
+    // Your config fields (we’ll map response_mime_type -> responseMimeType for the API)
+    const config = {
+      temperature: TEMPERATURE,
+      ...(TOP_P > 0 && { topP: TOP_P }),
+      response_mime_type: RESP_MIME
+    };
+
+    // Build body per your structure
+    const body = {
+      contents,
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT",         threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH",         threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",   threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT",   threshold: "BLOCK_NONE" }
+      ],
+      generationConfig: {
+        ...config,
+        // Map to the API’s expected camelCase key:
+        responseMimeType: config.response_mime_type,
+        thinkingConfig: { thinkingBudget: Math.max(0, Number.isFinite(+THINK_BUDGET) ? +THINK_BUDGET : 0) }
+      }
+    };
+
+    // Remove snake_case duplicate to avoid confusion
+    delete body.generationConfig.response_mime_type;
+
+    const ac = new AbortController(); setAbort?.(ac);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ac.signal
+    });
+
+    const ok = res.ok;
+    let dataText = "";
+    try { dataText = await res.text(); } catch {}
+    if (!ok) throw new Error(`Gemini HTTP ${res.status}: ${dataText || res.statusText}`);
+
+    let data;
+    try { data = JSON.parse(dataText); }
+    catch {
+      const t = dataText.trim().replace(/^\s*```(?:json)?\s*/i,"").replace(/\s*```\s*$/i,"");
+      data = JSON.parse(t);
+    }
+
+    let out = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!out.trim()) {
+      const b64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (b64) out = atob(b64);
+    }
+    out = out.replace(/^\s*```(?:json)?\s*/i,"").replace(/\s*```\s*$/i,"").trim();
+
+    let parsed;
+    try { parsed = JSON.parse(out); }
+    catch { if (data && Array.isArray(data.dst)) parsed = data; else throw new Error("Model did not return valid JSON."); }
+    if (!parsed || !Array.isArray(parsed.dst)) throw new Error("Translator response missing dst.");
+
+    const map = new Map();
+    for (const row of parsed.dst) if (row && typeof row.id === "number" && typeof row.text === "string") map.set(row.id, row.text);
+    return map;
+  }
+
+  async function translateBatch(API_KEY, batch, instr, setAbort){
+    const map = await callGemini(API_KEY, batch, instr, setAbort);
+    const missing = batch.filter(o => !map.has(o.id));
+    if (missing.length) {
+      for (const m of missing) {
+        try { const mm = await callGemini(API_KEY, [m], instr, setAbort); if (mm.has(m.id)) map.set(m.id, mm.get(m.id)); }
+        catch { map.set(m.id, m.text); }
+      }
+    }
+    return map;
+  }
+
+  // ---------- Main flow ----------
+  async function runTranslate(targetLang){
+    const lang = LANGS.find(l=>l.v===targetLang) || LANGS[0];
+    localStorage.setItem(LS_LANG, lang.v);
+    const loader = createFullscreenLoader();
+
+    try{
+      const API_KEY=getApiKey();
+      loader.setProgress(2, `Scanning page… (${lang.label})`);
+
+      const groups = collectGroups();
+      if (!groups.length) { loader.setProgress(100,"No text to translate",""); return; }
+
+      // Build id mapping (stable id -> exact Text node)
+      const srcObjs = [];
+      const idToTextNode = [];
+      let id = 0;
+      for (const g of groups) {
+        const walker = document.createTreeWalker(g.content, NodeFilter.SHOW_TEXT, null);
+        for (let t; (t = walker.nextNode()); ) {
+          const txt = NORMALIZE_WS ? normalizeWS(t.nodeValue) : t.nodeValue;
+          if (!txt) continue;
+          srcObjs.push({ id, text: txt });
+          idToTextNode[id] = t;
+          id++;
+        }
+      }
+
+      // Prepare Undo
+      window.__i18nUndo = buildUndo(groups);
+
+      const batches = chunkSrc(srcObjs, MAX_BYTES_PER_BATCH);
+      loader.setProgress(5, "Preparing translation…", `Containers: ${groups.length} · Text nodes: ${srcObjs.length} · Batches: ${batches.length}`);
+
+      const translated = new Map();
+      for (let i=0;i<batches.length;i++){
+        if (loader.isCancelled()) throw new Error("Translation cancelled.");
+        loader.setProgress(5 + (i/batches.length)*70, `Translating… (${i+1}/${batches.length})`, `${batches[i].length} strings`);
+        const map = await translateBatch(window.geminiApiKey, batches[i], lang.instr, (ac)=>loader.setAbortController(ac));
+        map.forEach((v,k)=>translated.set(k,v));
+      }
+
+      loader.setProgress(80, "Applying to page…");
+      for (let i=0;i<idToTextNode.length;i++){
+        const node = idToTextNode[i];
+        const t = translated.get(i);
+        if (node && typeof t === "string") node.nodeValue = t;
+      }
+
+      // Fit each container's content into the locked box
+      for (const g of groups) {
+        const W = Math.max(1, g.width);
+        const H = Math.max(1, g.height);
+        g.scaler.style.transform = "none";
+        const sw = Math.max(g.content.scrollWidth, g.scaler.scrollWidth, g.content.offsetWidth);
+        const sh = Math.max(g.content.scrollHeight, g.scaler.scrollHeight, g.content.offsetHeight);
+        let sx = W / sw;
+        let sy = H / sh;
+        if (!isFinite(sy) || sy <= 0) sy = sx;
+        const s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
+        if (s < 1) g.scaler.style.transform = `scale(${s})`;
+      }
+
+      loader.setProgress(100, "Done", "");
+      console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
+    } catch (err) {
+      console.error(err);
+      try { loader.setProgress(100, "Error", err?.message || "Unexpected error"); } catch {}
+    }
+  }
+
+  // ---------- Sticky control ----------
+  function mountStickyControl(){
+    const old=document.getElementById("__i18n_sticky_ctrl__"); if(old) old.remove();
+    const wrap=document.createElement("div");
+    wrap.id="__i18n_sticky_ctrl__";
+    wrap.style.cssText="position:fixed;top:14px;right:14px;z-index:2147483646;display:flex;gap:6px;align-items:center;background:rgba(0,0,0,.60);backdrop-filter:blur(4px);color:#fff;border-radius:12px;padding:8px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;";
+    if(!document.getElementById("__i18n_select_style__")){
+      const s=document.createElement("style");
+      s.id="__i18n_select_style__";
+      s.textContent=`
+        #__i18n_sticky_ctrl__ select { color:#111; background:#fff; border:1px solid rgba(0,0,0,.35); }
+        #__i18n_sticky_ctrl__ select option { color:#111; background:#fff; }
+        #__i18n_sticky_ctrl__ select option:checked { background:#e8f0fe; color:#111; }
+        #__i18n_sticky_ctrl__ select:focus { outline:2px solid #5b9dd9; outline-offset:2px; }
+        #__i18n_sticky_ctrl__ button { border:1px solid rgba(255,255,255,.35); background:rgba(255,255,255,.14); color:#fff; }
+        #__i18n_sticky_ctrl__ button:hover { background:rgba(255,255,255,.22); }
+      `;
+      document.head.appendChild(s);
+    }
+    const label=document.createElement("span"); label.textContent="Translate to:"; label.style.cssText="font-size:12px;opacity:.9;";
+    const select=document.createElement("select"); select.style.cssText="font-size:12px;padding:4px 6px;border-radius:8px;outline:none;max-width:280px;";
+    LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
+    select.value = localStorage.getItem(LS_LANG) || "zh-CN";
+    const btnGo=document.createElement("button"); btnGo.textContent="Translate"; btnGo.style.cssText="font-size:12px;padding:6px 10px;border-radius:8px;cursor:pointer;";
+    const btnUndo=document.createElement("button"); btnUndo.textContent="Undo"; btnUndo.style.cssText=btnGo.style.cssText;
+    const btnKey=document.createElement("button"); btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.cssText=btnGo.style.cssText;
+
+    wrap.appendChild(label); wrap.appendChild(select); wrap.appendChild(btnGo); wrap.appendChild(btnUndo); wrap.appendChild(btnKey);
+    document.body.appendChild(wrap);
+
+    btnGo.addEventListener("click", ()=> runTranslate(select.value));
+    btnUndo.addEventListener("click", ()=>{ if(typeof window.__i18nUndo==="function") window.__i18nUndo(); else console.log("Nothing to undo yet."); });
+    btnKey.addEventListener("click", ()=>{
+      const curr=(window.geminiApiKey || localStorage.getItem(LS_KEY) || "");
+      const k=prompt("Gemini API key (leave blank to clear):", curr||"");
+      if(k==null) return;
+      const v=String(k).trim();
+      if(!v) clearGeminiKey(); else setGeminiKey(v);
+    });
+  }
+
+  // Init
+  mountStickyControl();
+  window.__i18nRunTranslate = runTranslate;
+})();
+
+</script>
+<!-- i18n Gemini Translate [end  ] -->
