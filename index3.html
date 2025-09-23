@@ -18325,7 +18325,7 @@ async function runTranslate(targetLang){
         unresolved.push({ id: i, text: original });
       }
 
-      if (unresolved.length) {
+      if (false && unresolved.length) {
         debugLog("forceTranslate:retry", { count: unresolved.length });
         const forceInstr = `${lang.instr} Translate ALL human-readable text into ${lang.label}. Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.`;
         const forceBatches = chunkSrc(unresolved, MAX_BYTES_PER_BATCH);
