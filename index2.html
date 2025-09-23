@@ -534,7 +534,7 @@ if (btnTranslate) {
         box-sizing:border-box;
         display:flex;
         flex-direction:column;
-        gap:12px;
+        gap:14px;
         align-items:stretch;
         opacity:1;
         transform:translateY(0);
@@ -544,6 +544,47 @@ if (btnTranslate) {
         opacity:0;
         pointer-events:none;
         transform:translateY(-8px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_header {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        flex-wrap:wrap;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_title {
+        font-size:13px;
+        font-weight:600;
+        letter-spacing:.3px;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close {
+        appearance:none;
+        border:1px solid rgba(255,255,255,.15);
+        background:rgba(255,255,255,.14);
+        color:#fff;
+        width:28px;
+        height:28px;
+        border-radius:50%;
+        cursor:pointer;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:16px;
+        line-height:1;
+        flex-shrink:0;
+        transition:background .18s ease, border-color .18s ease, transform .18s ease;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close:hover {
+        background:rgba(255,255,255,.24);
+        border-color:rgba(255,255,255,.25);
+        transform:translateY(-1px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close:active {
+        transform:translateY(0);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close:focus-visible {
+        outline:2px solid rgba(13,110,253,.65);
+        outline-offset:2px;
       }
       #__i18n_sticky_ctrl__ .__i18n_row {
         display:flex;
@@ -597,9 +638,10 @@ if (btnTranslate) {
         border:1px solid rgba(255,255,255,.3);
         background:rgba(255,255,255,.12);
         color:#fff;
-        padding:6px 14px;
-        border-radius:10px;
+        padding:8px 16px;
+        border-radius:12px;
         font-size:12px;
+        font-weight:600;
         cursor:pointer;
         transition:background .18s ease, border-color .18s ease, transform .18s ease;
       }
@@ -661,9 +703,16 @@ if (btnTranslate) {
     wrap.id="__i18n_sticky_ctrl__";
     wrap.className="__i18n_panel";
     wrap.dataset.i18nSkip="1";
-    wrap.style.cssText="position:fixed;top:35px;right:16px;z-index:2147483646;display:none;background:rgba(0,0,0,.72);backdrop-filter:blur(6px);color:#fff;border-radius:12px;padding:12px 14px;box-shadow:0 16px 32px rgba(0,0,0,.25);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;max-width:min(90vw,380px);width:auto;min-width:0;";
+    wrap.style.cssText="position:fixed;top:32px;right:20px;z-index:2147483646;display:none;background:rgba(18,19,23,.9);backdrop-filter:blur(10px);color:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 20px 38px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;max-width:min(90vw,380px);width:auto;min-width:0;";
+    wrap.setAttribute("role","dialog");
+    wrap.setAttribute("aria-label","Gemini translate controls");
     wrap.setAttribute("aria-hidden","true");
     wrap.setAttribute("data-visible","0");
+    const header=document.createElement("div"); header.className="__i18n_header";
+    const title=document.createElement("span"); title.className="__i18n_title"; title.textContent="Gemini Translate";
+    const btnClose=document.createElement("button"); btnClose.type="button"; btnClose.className="__i18n_close"; btnClose.setAttribute("aria-label","Close translate controls"); btnClose.title="Close";
+    btnClose.innerHTML="&#215;";
+    header.appendChild(title); header.appendChild(btnClose);
     const label=document.createElement("span"); label.className="__i18n_label"; label.textContent="Translate to:";
     const select=document.createElement("select"); select.className="__i18n_select";
     LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
@@ -677,7 +726,9 @@ if (btnTranslate) {
     const field=document.createElement("div"); field.className="__i18n_field"; field.appendChild(label); field.appendChild(select);
     const actions=document.createElement("div"); actions.className="__i18n_actions"; actions.appendChild(btnGo); actions.appendChild(btnReset);
     const row=document.createElement("div"); row.className="__i18n_row"; row.appendChild(field); row.appendChild(actions);
-    wrap.appendChild(row); wrap.appendChild(btnKey);
+    wrap.appendChild(header);
+    wrap.appendChild(row);
+    wrap.appendChild(btnKey);
     select.addEventListener("change", ()=>{
       const v = String(select.value || "").trim();
       localStorage.setItem(LS_LANG, v);
@@ -695,6 +746,9 @@ if (btnTranslate) {
 
     btnGo.addEventListener("click", ()=> runTranslate(select.value));
     btnReset.addEventListener("click", ()=>{ window.location.reload(); });
+    btnClose.addEventListener("click", ()=>{
+      setStickyCtrlVisibility(false);
+    });
     btnKey.addEventListener("click", ()=>{
       const curr=(window.geminiApiKey || localStorage.getItem(LS_KEY) || "");
       const k=prompt("Gemini API key (leave blank to clear):", curr||"");
