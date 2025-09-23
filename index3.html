@@ -18176,7 +18176,7 @@ if (btnTranslate) {
       "You MUST return the SAME ids; do not omit or invent ids.",
       "Do NOT merge, split, drop, or add items.",
       "Preserve numbers, dates, IDs/SKU codes and currency codes/symbols as appropriate.",
-      "Translate all human-readable text into the target language (including Chinese/Korean/Hindi). Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.",
+      "Translate ALL human-readable text into the selected target language, regardless of script (Chinese, Japanese, Korean, Hindi, Thai, Arabic, Cyrillic, etc.). Translate language labels like 'Chinese:' and 'Korean:' as normal text. Ensure every dst.text is fully written in the selected target language; do not echo any source-language words or scripts in the output (except strict code tokens and currency symbols). Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.",
       "Leave currency prefixes/symbols such as US$, RM, TW$, and $ unchanged.",
       "No code fences."
     ].join("\n");
