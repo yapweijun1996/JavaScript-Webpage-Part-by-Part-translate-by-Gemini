@@ -18690,6 +18690,8 @@ if (btnTranslate) {
         if (!raw || !raw.trim()) return NodeFilter.FILTER_REJECT;
         const p = node.parentElement;
         if (!p || TAG_SKIP.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        // Skip any text within the blacklist container: .div_listmain_head
+        if (p.closest?.('.div_listmain_head')) return NodeFilter.FILTER_REJECT;
         if (p.closest?.('[data-i18n-skip="1"]')) return NodeFilter.FILTER_REJECT;
         // Interactive controls are skipped by default, unless an ancestor explicitly opts in with data-i18n-translate="1"
         const interactiveAncestor = p.closest?.('button, input, select, textarea, [role="button"]');
@@ -19012,6 +19014,11 @@ function scanPage() {
   for (const g of groups) {
     const walker = document.createTreeWalker(g.content, NodeFilter.SHOW_TEXT, null);
     for (let t; (t = walker.nextNode()); ) {
+      // Skip any text within the blacklist container: .div_listmain_head
+      const parent = t.parentElement;
+      if (parent?.closest?.('.div_listmain_head')) continue;
+      // Respect explicit skip flags
+      if (parent?.closest?.('[data-i18n-skip="1"]')) continue;
       const txt = NORMALIZE_WS ? normalizeWS(t.nodeValue) : t.nodeValue;
       if (!txt) continue;
       srcObjs.push({ id, text: txt });
