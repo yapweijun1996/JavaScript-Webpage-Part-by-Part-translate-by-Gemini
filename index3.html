@@ -17856,9 +17856,11 @@ if (btnTranslate) {
   const TOP_P = 1;           // per your request
   const RESP_MIME = "application/json";
   const THINK_BUDGET = 512;  // per your request
+  const DEBUG_TRANSLATE = Object.prototype.hasOwnProperty.call(window, "I18N_DEBUG") ? !!window.I18N_DEBUG : true;
+  const debugLog = (...args) => { if (!DEBUG_TRANSLATE) return; console.log("[i18n-debug]", ...args); };
 
   const MAX_BYTES_PER_BATCH = 20000; // smaller = safer
-  const ONLY_VISIBLE = true;
+  const ONLY_VISIBLE = false;
   const NORMALIZE_WS = true;
   const LS_KEY = "gemini_api_key";
   const LS_LANG = "i18n_target_lang";
@@ -17940,6 +17942,16 @@ if (btnTranslate) {
   const isVisible=(el)=>{ if(!el) return false; for(let n=el;n&&n.nodeType===1;n=n.parentElement){ if(isHiddenByAttr(n)) return false; const cs=getComputedStyle(n); if(cs.display==="none"||cs.visibility==="hidden"||cs.visibility==="collapse"||parseFloat(cs.opacity)===0) return false; } const r=el.getBoundingClientRect?.(); return !!r && r.width>0 && r.height>0; };
   const normalizeWS=(s)=>s.replace(/\s+/g," ").trim();
   const bytes = (s)=> new Blob([s]).size;
+  const hasUnicodeLetter = (txt = "") => /\p{L}/u.test(txt);
+  const looksLikeCode = (txt = "") => /^[A-Z0-9\s\-._()\/\\:&+]+$/.test(txt.trim());
+  const needsSecondPass = (original = "", translated = "") => {
+    const normOriginal = NORMALIZE_WS ? normalizeWS(original) : original;
+    const normResult = NORMALIZE_WS ? normalizeWS(translated ?? "") : translated ?? "";
+    if (!normOriginal) return false;
+    if (!normResult) return true;
+    if (normOriginal === normResult && /\p{L}/u.test(normOriginal) && !looksLikeCode(normOriginal)) return true;
+    return false;
+  };
 
   function nearestContainer(el){
     let n = el;
@@ -18099,6 +18111,7 @@ if (btnTranslate) {
       const g = groups.find(gr => gr.container === it.container);
       if (g) g.nodes.push(it);
     }
+    debugLog("collectGroups", { containers: groups.length, textNodes: items.length });
     return groups;
   }
 
@@ -18163,13 +18176,14 @@ if (btnTranslate) {
       "You MUST return the SAME ids; do not omit or invent ids.",
       "Do NOT merge, split, drop, or add items.",
       "Preserve numbers, dates, IDs/SKU codes and currency codes/symbols as appropriate.",
-      "If a string contains phrases like 'Not Supported Font', still translate every natural-language words that follow (including Korean, Hindi, etc.) into the target language.",
+      "Translate all human-readable text into the target language (including Chinese/Korean/Hindi). Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.",
       "Leave currency prefixes/symbols such as US$, RM, TW$, and $ unchanged.",
       "No code fences."
     ].join("\n");
   }
 
   async function callGemini(API_KEY, srcArr, instr, setAbort){
+    debugLog("callGemini:start", { size: srcArr.length, sample: srcArr[0]?.text?.slice(0, 60) || "" });
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(API_KEY)}`;
 
     const contents = [{
@@ -18237,25 +18251,30 @@ if (btnTranslate) {
     if (!parsed || !Array.isArray(parsed.dst)) throw new Error("Translator response missing dst.");
 
     const map = new Map();
-    for (const row of parsed.dst) if (row && typeof row.id === "number" && typeof row.text === "string") map.set(row.id, row.text);
-    return map;
-  }
+  for (const row of parsed.dst) if (row && typeof row.id === "number" && typeof row.text === "string") map.set(row.id, row.text);
+  debugLog("callGemini:done", { received: map.size });
+  return map;
+}
 
-  async function translateBatch(API_KEY, batch, instr, setAbort){
-    const map = await callGemini(API_KEY, batch, instr, setAbort);
-    const missing = batch.filter(o => !map.has(o.id));
-    if (missing.length) {
+async function translateBatch(API_KEY, batch, instr, setAbort){
+  debugLog("translateBatch:start", { count: batch.length });
+  const map = await callGemini(API_KEY, batch, instr, setAbort);
+  const missing = batch.filter(o => !map.has(o.id));
+  if (missing.length) {
+      debugLog("translateBatch:retryMissing", { missing: missing.length });
       for (const m of missing) {
         try { const mm = await callGemini(API_KEY, [m], instr, setAbort); if (mm.has(m.id)) map.set(m.id, mm.get(m.id)); }
         catch { map.set(m.id, m.text); }
       }
-    }
-    return map;
   }
+  debugLog("translateBatch:done", { final: map.size });
+  return map;
+}
 
-  // ---------- Main flow ----------
-  async function runTranslate(targetLang){
+// ---------- Main flow ----------
+async function runTranslate(targetLang){
     const lang = LANGS.find(l=>l.v===targetLang) || LANGS[0];
+    debugLog("runTranslate", { target: lang.v, label: lang.label });
     localStorage.setItem(LS_LANG, lang.v);
     const loader = createFullscreenLoader();
 
@@ -18286,20 +18305,55 @@ if (btnTranslate) {
 
       const batches = chunkSrc(srcObjs, MAX_BYTES_PER_BATCH);
       loader.setProgress(5, "Preparing translation…", `Containers: ${groups.length} · Text nodes: ${srcObjs.length} · Batches: ${batches.length}`);
+      debugLog("runTranslate:scanResult", { containers: groups.length, textNodes: srcObjs.length, batches: batches.length });
 
       const translated = new Map();
       for (let i=0;i<batches.length;i++){
         if (loader.isCancelled()) throw new Error("Translation cancelled.");
         loader.setProgress(5 + (i/batches.length)*70, `Translating… (${i+1}/${batches.length})`, `${batches[i].length} strings`);
+        debugLog("runTranslate:batch", { index: i+1, of: batches.length, strings: batches[i].length });
         const map = await translateBatch(window.geminiApiKey, batches[i], lang.instr, (ac)=>loader.setAbortController(ac));
         map.forEach((v,k)=>translated.set(k,v));
+      }
+
+      const unresolved = [];
+      for (let i=0;i<srcObjs.length;i++){
+        const original = srcObjs[i]?.text ?? "";
+        const result = translated.get(i);
+        if (typeof result === "string" && !needsSecondPass(original, result)) continue;
+        if (!original) continue;
+        unresolved.push({ id: i, text: original });
+      }
+
+      if (unresolved.length) {
+        debugLog("forceTranslate:retry", { count: unresolved.length });
+        const forceInstr = `${lang.instr} Translate ALL human-readable text into ${lang.label}. Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.`;
+        const forceBatches = chunkSrc(unresolved, MAX_BYTES_PER_BATCH);
+        let updated = 0;
+        for (let i=0;i<forceBatches.length;i++) {
+          debugLog("forceTranslate:batch", { index: i+1, of: forceBatches.length, strings: forceBatches[i].length });
+          const retryMap = await callGemini(window.geminiApiKey, forceBatches[i], forceInstr, (ac)=>loader.setAbortController(ac));
+          retryMap.forEach((v,k)=>{ translated.set(k,v); updated++; });
+        }
+        debugLog("forceTranslate:done", { updated });
       }
 
       loader.setProgress(80, "Applying to page…");
       for (let i=0;i<idToTextNode.length;i++){
         const node = idToTextNode[i];
         const t = translated.get(i);
-        if (node && typeof t === "string") node.nodeValue = t;
+        if (node && typeof t === "string") {
+          if (DEBUG_TRANSLATE) {
+            const beforeRaw = srcObjs[i]?.text ?? node.nodeValue;
+            const afterRaw = t;
+            const trimmedBefore = beforeRaw?.slice?.(0, 160) || "";
+            const trimmedAfter = afterRaw?.slice?.(0, 160) || "";
+            if (trimmedBefore !== trimmedAfter) {
+              debugLog("apply", { id: i, before: trimmedBefore, after: trimmedAfter });
+            }
+          }
+          node.nodeValue = t;
+        }
       }
 
       // Fit each container's content into the locked box
@@ -18319,7 +18373,9 @@ if (btnTranslate) {
       }
       loader.setProgress(100, "Done", "");
       console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
+      debugLog("runTranslate:complete", { applied: idToTextNode.length });
     } catch (err) {
+      debugLog("runTranslate:error", err);
       console.error(err);
       try { loader.setProgress(100, "Error", err?.message || "Unexpected error"); } catch {}
     }
