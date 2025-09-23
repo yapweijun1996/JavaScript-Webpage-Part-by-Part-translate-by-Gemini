@@ -17857,7 +17857,16 @@ if (btnTranslate) {
   const RESP_MIME = "application/json";
   const THINK_BUDGET = 512;  // per your request
   const DEBUG_TRANSLATE = Object.prototype.hasOwnProperty.call(window, "I18N_DEBUG") ? !!window.I18N_DEBUG : true;
-  const debugLog = (...args) => { if (!DEBUG_TRANSLATE) return; console.log("[i18n-debug]", ...args); };
+  // temp_debug_mode 开关：'y' 输出调试日志，否则不输出
+  // 允许外部覆盖 window.temp_debug_mode（如在控制台设为 'n' 以静默）
+  if (typeof window.temp_debug_mode !== 'string') {
+    window.temp_debug_mode = 'y';
+  }
+  const debugLog = (...args) => {
+    if (!DEBUG_TRANSLATE) return;
+    if ((window.temp_debug_mode || 'n') !== 'y') return;
+    console.log("[i18n-debug]", ...args);
+  };
 
   const MAX_BYTES_PER_BATCH = 20000; // smaller = safer
   const ONLY_VISIBLE = false;
@@ -18343,14 +18352,13 @@ async function runTranslate(targetLang){
         const node = idToTextNode[i];
         const t = translated.get(i);
         if (node && typeof t === "string") {
-          if (DEBUG_TRANSLATE) {
+          // 打印每一条 原文→译文（包括未变化的文本）
+          if (DEBUG_TRANSLATE && (window.temp_debug_mode || 'n') === 'y') {
             const beforeRaw = srcObjs[i]?.text ?? node.nodeValue;
             const afterRaw = t;
             const trimmedBefore = beforeRaw?.slice?.(0, 160) || "";
             const trimmedAfter = afterRaw?.slice?.(0, 160) || "";
-            if (trimmedBefore !== trimmedAfter) {
-              debugLog("apply", { id: i, before: trimmedBefore, after: trimmedAfter });
-            }
+            debugLog("apply", { id: i, before: trimmedBefore, after: trimmedAfter });
           }
           node.nodeValue = t;
         }
