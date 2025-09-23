@@ -1,0 +1,870 @@
+<table cellpadding="0" cellspacing="0" style="width:222px;table-layout:fixed;" border="0">
+  <tr>
+    <td style="box-sizing:border-box; width: 111px;"></td>
+    <td style="box-sizing:border-box; width: 111px;"></td>
+  </tr>
+  <tr>
+    <td style="box-sizing:border-box;">We are Testing width for td1</td>
+    <td style="box-sizing:border-box;"><span style="display: block;">We are Testing width for td2</span></td>
+  </tr>
+  <tr>
+    <td style="box-sizing:border-box;">
+      <span style="display: block; padding: 3px 3px;">
+        <span style="display: block;">
+          Not Supported Font : Hindi: नमूना स्टॉक कोड
+        </span>
+      </span>
+    </td>
+    <td style="box-sizing:border-box;">We are Testing width for td4</td>
+  </tr>
+  <tr>
+    <td style="box-sizing:border-box;"><button type="button" data-i18n-translate="1">Test Button</button></td>
+    <td style="box-sizing:border-box;">We are Testing width for td4</td>
+  </tr>
+</table>
+
+
+
+
+
+
+
+
+
+
+<button type="button" class="btn" id="btn-ai-translate">AI Translate</button>
+
+<!-- i18n Gemini Translate [start] -->
+<script>
+// === I18N Translate-In-Place � Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
+// Uses your Gemini body format (model/topP/response_mime_type/thinkingBudget/safetySettings).
+const I18N_TOGGLE_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
+window.I18N_TOGGLE_SELECTOR = I18N_TOGGLE_SELECTOR;
+const btnTranslate = document.querySelector(I18N_TOGGLE_SELECTOR);
+if (btnTranslate) {
+  btnTranslate.setAttribute('aria-pressed', 'false');
+  if (!btnTranslate.hasAttribute('data-i18n-toggle')) {
+    btnTranslate.setAttribute('data-i18n-toggle', 'ai-translate');
+  }
+  // Exclude the toggle button from i18n scanning/locking
+  btnTranslate.setAttribute('data-i18n-skip', '1');
+
+  btnTranslate.addEventListener('click', () => {
+    if (typeof window.__i18nToggleTranslatePanel === 'function') {
+      window.__i18nToggleTranslatePanel();
+    }
+  });
+}
+
+(() => {
+
+  // ---------------- Settings ----------------
+  const MODEL = "gemini-2.5-flash-lite";
+  const TEMPERATURE = 0;     // deterministic; change if you want
+  const TOP_P = 1;           // per your request
+  const RESP_MIME = "application/json";
+  const THINK_BUDGET = 512;  // per your request
+  const DEBUG_TRANSLATE = Object.prototype.hasOwnProperty.call(window, "I18N_DEBUG") ? !!window.I18N_DEBUG : true;
+  // temp_debug_mode 开关：'y' 输出调试日志，否则不输出
+  // 允许外部覆盖 window.temp_debug_mode（如在控制台设为 'n' 以静默）
+  if (typeof window.temp_debug_mode !== 'string') {
+    window.temp_debug_mode = 'y';
+  }
+  const debugLog = (...args) => {
+    if (!DEBUG_TRANSLATE) return;
+    if ((window.temp_debug_mode || 'n') !== 'y') return;
+    console.log("[i18n-debug]", ...args);
+  };
+
+  const MAX_BYTES_PER_BATCH = 20000; // smaller = safer
+  const ONLY_VISIBLE = false;
+  const NORMALIZE_WS = true;
+  const LS_KEY = "gemini_api_key";
+  const LS_LANG = "i18n_target_lang";
+  const AUTO_CLOSE_MS = 900;
+  const MIN_SCALE = 0.6;
+  const SCALE_TRANSITION_MS = 80;
+  const TOGGLE_BUTTON_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
+
+  const LANGS = [
+    { v: "zh-CN", label: "Mandarin — Mainland (简体)", instr: "Translate to Simplified Chinese (Mainland style)." },
+    { v: "zh-TW", label: "Mandarin — Taiwan (繁體)",   instr: "Translate to Traditional Chinese (Taiwan style)." },
+    { v: "en",    label: "English",                    instr: "Translate to English." },
+    { v: "ja",    label: "Japanese (日本語)",              instr: "Translate to Japanese." },
+    { v: "vi",    label: "Vietnamese (Tiếng Việt)",     instr: "Translate to Vietnamese." },
+    { v: "hi",    label: "Hindi (हिन्दी)",                instr: "Translate to Hindi." },
+    { v: "ko",    label: "Korean (한국어)",               instr: "Translate to Korean." },
+    { v: "th",    label: "Thai (ไทย)",                   instr: "Translate to Thai." },
+    { v: "ms",    label: "Malay (Bahasa Melayu)",       instr: "Translate to Malay." },
+    { v: "id",    label: "Indonesian (Bahasa Indonesia)", instr: "Translate to Indonesian." },
+    { v: "fil",   label: "Filipino (Tagalog)",          instr: "Translate to Filipino (Tagalog)." },
+  ];
+
+  // ---------- Key helpers ----------
+  function getApiKey() {
+    let k = (window.geminiApiKey || "").trim();
+    if (!k) k = (localStorage.getItem(LS_KEY) || "").trim();
+    if (!k) {
+      k = (prompt("Enter your Gemini API key (will be saved to localStorage):") || "").trim();
+      if (!k) throw new Error("Missing API key.");
+      localStorage.setItem(LS_KEY, k);
+    }
+    window.geminiApiKey = k;
+    if ((localStorage.getItem(LS_KEY) || "").trim() !== k) localStorage.setItem(LS_KEY, k);
+    return k;
+  }
+  window.setGeminiKey = (k) => { const v = String(k||"").trim(); if (!v) throw new Error("Empty key."); window.geminiApiKey=v; localStorage.setItem(LS_KEY,v); console.log("Gemini key set."); };
+  window.clearGeminiKey = () => { window.geminiApiKey=""; localStorage.removeItem(LS_KEY); console.log("Gemini key cleared."); };
+
+  // ---------- Loader ----------
+  function createFullscreenLoader() {
+    const old = document.getElementById("__i18n_loader_overlay__"); if (old) old.remove();
+    const overlay = document.createElement("div");
+    overlay.id="__i18n_loader_overlay__";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);";
+    const style = document.createElement("style"); style.textContent = "@keyframes __spin__{to{transform:rotate(360deg)}}"; document.documentElement.appendChild(style);
+
+    const box=document.createElement("div");
+    box.style.cssText="min-width:260px;max-width:90vw;background:#111;color:#fff;border-radius:16px;padding:20px 24px;box-shadow:0 10px 30px rgba(0,0,0,.4);display:flex;flex-direction:column;align-items:center;gap:14px;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;";
+    const spinner=document.createElement("div"); spinner.style.cssText="width:48px;height:48px;border-radius:50%;border:4px solid rgba(255,255,255,.15);border-top-color:#fff;animation:__spin__ 1s linear infinite;";
+    const title=document.createElement("div"); title.textContent="Translating webpage…"; title.style.cssText="font-weight:600;font-size:16px;text-align:center;";
+    const progress=document.createElement("div"); progress.textContent="Preparing…"; progress.style.cssText="font-size:13px;opacity:.85;text-align:center;";
+    const barWrap=document.createElement("div"); barWrap.style.cssText="width:100%;height:8px;background:rgba(255,255,255,.12);border-radius:999px;overflow:hidden;";
+    const bar=document.createElement("div"); bar.style.cssText="height:100%;width:0%;background:linear-gradient(90deg,#fff,#ddd);transition:width .2s ease;"; barWrap.appendChild(bar);
+    const details=document.createElement("div"); details.style.cssText="font-size:12px;opacity:.75;text-align:center;";
+    const btns=document.createElement("div"); btns.style.cssText="display:flex;gap:8px;";
+    const btnCancel=document.createElement("button"); btnCancel.type="button"; btnCancel.textContent="Cancel"; btnCancel.style.cssText="padding:6px 12px;border-radius:10px;border:1px solid rgba(255,255,255,.3);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:12px;";
+    const btnClose=document.createElement("button"); btnClose.type="button"; btnClose.textContent="Close"; btnClose.style.cssText=btnCancel.style.cssText+";display:none;";
+    btns.appendChild(btnCancel); btns.appendChild(btnClose);
+    box.appendChild(spinner); box.appendChild(title); box.appendChild(progress); box.appendChild(barWrap); box.appendChild(details); box.appendChild(btns);
+    overlay.appendChild(box); document.body.appendChild(overlay);
+
+    let cancelled=false, currentAbort=null, timer=null;
+    btnCancel.addEventListener("click", () => { cancelled=true; if(currentAbort) try{currentAbort.abort()}catch{}; progress.textContent="Cancelling…"; details.textContent="Stopping current request"; });
+    btnClose.addEventListener("click", () => { clearTimeout(timer); overlay.remove(); style.remove(); });
+    document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") btnCancel.click(); }, { once:true });
+
+    function setProgress(pct, text, sub){
+      const c=Math.max(0,Math.min(100,Math.round(pct)));
+      bar.style.width=c+"%"; if(text) progress.textContent=text; if(sub!==undefined) details.textContent=sub||"";
+      if(c>=100){ btnCancel.style.display="none"; btnClose.style.display="inline-block"; if(!timer) timer=setTimeout(()=>{ overlay.remove(); style.remove(); }, AUTO_CLOSE_MS); }
+    }
+    return { setProgress, setAbortController:(ac)=>{ currentAbort=ac; }, isCancelled:()=>cancelled, close:()=>{ clearTimeout(timer); overlay.remove(); style.remove(); } };
+  }
+
+  // ---------- Utils ----------
+  const TAG_SKIP=new Set(["SCRIPT","STYLE","NOSCRIPT","IFRAME","OBJECT","EMBED","CANVAS","SVG","META","HEAD","TITLE","LINK"]);
+  const WEAK_CONTAINER_TAGS = new Set(["SPAN","FONT","B","I","EM","STRONG","SMALL","SUP","SUB","MARK","LABEL","CODE","ABBR"]);
+  const isHiddenByAttr=(el)=>el?.hasAttribute?.("hidden")||el?.getAttribute?.("aria-hidden")==="true";
+  const isVisible=(el)=>{ if(!el) return false; for(let n=el;n&&n.nodeType===1;n=n.parentElement){ if(isHiddenByAttr(n)) return false; const cs=getComputedStyle(n); if(cs.display==="none"||cs.visibility==="hidden"||cs.visibility==="collapse"||parseFloat(cs.opacity)===0) return false; } const r=el.getBoundingClientRect?.(); return !!r && r.width>0 && r.height>0; };
+  const normalizeWS=(s)=>s.replace(/\s+/g," ").trim();
+  const bytes = (s)=> new Blob([s]).size;
+  const hasUnicodeLetter = (txt = "") => /\p{L}/u.test(txt);
+  const looksLikeCode = (txt = "") => /^[A-Z0-9\s\-._()\/\\:&+]+$/.test(txt.trim());
+  const needsSecondPass = (original = "", translated = "") => {
+    const normOriginal = NORMALIZE_WS ? normalizeWS(original) : original;
+    const normResult = NORMALIZE_WS ? normalizeWS(translated ?? "") : translated ?? "";
+    if (!normOriginal) return false;
+    if (!normResult) return true;
+    if (normOriginal === normResult && /\p{L}/u.test(normOriginal) && !looksLikeCode(normOriginal)) return true;
+    return false;
+  };
+
+  function nearestContainer(el){
+    let n = el;
+    while (n && n !== document.body) {
+      if (n.dataset && n.dataset.i18nContainer === "1") return n;
+      const cs = getComputedStyle(n);
+      if (cs.display && cs.display !== "inline") {
+        if (!WEAK_CONTAINER_TAGS.has(n.tagName)) return n;
+      }
+      n = n.parentElement;
+    }
+    const fallback = el.closest("[data-i18n-container],td,th,section,article,div") || el.closest("body") || document.body;
+    return fallback;
+  }
+
+  // Lock container pixel size; return previous inline style so we can restore.
+  function __i18n_lockContainerSize(el, lock = true) {
+    const prevStyle = el.getAttribute("style") ?? null;
+    const W = Math.max(1, el.offsetWidth);
+    const H = Math.max(1, el.offsetHeight);
+    if (lock) {
+      el.style.boxSizing = "border-box";
+      el.style.width = W + "px";
+      el.style.minWidth = W + "px";
+      el.style.maxWidth = W + "px";
+      el.style.height = H + "px";
+      el.style.minHeight = H + "px";
+      el.style.maxHeight = H + "px";
+      el.style.overflow = "hidden";
+    }
+    return { W, H, prevStyle, locked: lock };
+  }
+
+  // ---------- Collect & group by container (and lock sizes) ----------
+  function collectGroups(){
+    const items = [];
+    const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const raw = node.nodeValue;
+        if (!raw || !raw.trim()) return NodeFilter.FILTER_REJECT;
+        const p = node.parentElement;
+        if (!p || TAG_SKIP.has(p.tagName)) return NodeFilter.FILTER_REJECT;
+        if (p.closest?.('[data-i18n-skip="1"]')) return NodeFilter.FILTER_REJECT;
+        // Interactive controls are skipped by default, unless an ancestor explicitly opts in with data-i18n-translate="1"
+        const interactiveAncestor = p.closest?.('button, input, select, textarea, [role="button"]');
+        if (interactiveAncestor && !interactiveAncestor.hasAttribute('data-i18n-translate')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        if (ONLY_VISIBLE && !isVisible(p)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    for (let n; (n = walker.nextNode());) {
+      const p = n.parentElement;
+      const text = NORMALIZE_WS ? normalizeWS(n.nodeValue) : n.nodeValue;
+      if (text) items.push({ node: n, container: nearestContainer(p), text });
+    }
+
+    const groups = [];
+    const seen = new Set();
+    for (const it of items) {
+      const key = it.container;
+      if (seen.has(key)) continue;
+
+      let scaler = key.__i18nScaler;
+      let content = key.__i18nContent;
+      let moved = key.__i18nMoved;
+      const csOriginal = getComputedStyle(key);
+
+      if (!scaler || !content || !key.contains(scaler) || !scaler.contains(content)) {
+        moved = [];
+        scaler = document.createElement("span");
+        scaler.className = "__i18n_scaler";
+        scaler.style.transformOrigin = "left top";
+        scaler.style.transition = `transform ${SCALE_TRANSITION_MS}ms ease-out`;
+        scaler.style.display = (csOriginal.display === "inline") ? "inline-block" : "block";
+        content = document.createElement("span");
+        content.className = "__i18n_content";
+        while (key.firstChild) { const ch = key.firstChild; moved.push(ch); content.appendChild(ch); }
+        scaler.appendChild(content);
+        key.appendChild(scaler);
+        key.dataset.i18nContainer = "1";
+        key.__i18nScaler = scaler;
+        key.__i18nContent = content;
+        key.__i18nMoved = moved;
+      } else {
+        if (!Array.isArray(moved)) moved = key.__i18nMoved = [];
+        scaler.style.transformOrigin = "left top";
+        scaler.style.transition = `transform ${SCALE_TRANSITION_MS}ms ease-out`;
+        scaler.style.display = (csOriginal.display === "inline") ? "inline-block" : "block";
+      }
+
+      // Do not hard-lock interactive controls (buttons/inputs), even if they opt in for translation
+      const interactiveForLock = key.closest('button, input, select, textarea, [role="button"]');
+      const shouldLock = !WEAK_CONTAINER_TAGS.has(key.tagName) && !interactiveForLock;
+      const { W, H, prevStyle, locked } = __i18n_lockContainerSize(key, shouldLock);
+      // Ensure scaler matches measured bounds so scaled content respects original geometry
+      const rect = key.getBoundingClientRect();
+      const widthPx = rect?.width && !Number.isNaN(rect.width) ? rect.width : W;
+      const heightPx = rect?.height && !Number.isNaN(rect.height) ? rect.height : H;
+      scaler.style.width = Math.max(1, widthPx) + "px";
+      scaler.style.height = Math.max(1, heightPx) + "px";
+
+      // Absolute wrapper for table cells: detach scalable content from table flow
+      // so the table row height is no longer influenced by post-translation content.
+      const isTableCell = key.tagName === "TD" || key.tagName === "TH";
+      if (isTableCell) {
+        let absWrap = key.__i18nAbsWrap;
+        const csKey = getComputedStyle(key);
+        try {
+          // Ensure container can anchor absolute children
+          if (csKey.position === "static") {
+            key.style.position = "relative";
+          }
+          if (!absWrap || !key.contains(absWrap)) {
+            absWrap = document.createElement("div");
+            absWrap.className = "__i18n_abs_wrap";
+            absWrap.style.cssText = [
+              "position:absolute",
+              "left:0",
+              "top:0",
+              "right:0",
+              "bottom:0",
+              "overflow:hidden",
+              "box-sizing:border-box"
+            ].join(";");
+            // Move scaler into absWrap (out of normal flow)
+            if (key.contains(scaler)) key.removeChild(scaler);
+            absWrap.appendChild(scaler);
+            key.appendChild(absWrap);
+            key.__i18nAbsWrap = absWrap;
+          } else {
+            // Keep styles consistent if wrapper already exists
+            absWrap.style.position = "absolute";
+            absWrap.style.left = "0";
+            absWrap.style.top = "0";
+            absWrap.style.right = "0";
+            absWrap.style.bottom = "0";
+            absWrap.style.overflow = "hidden";
+            absWrap.style.boxSizing = "border-box";
+            if (!absWrap.contains(scaler)) absWrap.appendChild(scaler);
+          }
+        } catch (e) {
+          console.warn("i18n: failed to mount absolute wrapper for table cell:", e);
+        }
+      }
+
+      const originalText = new Map();
+      const tw = document.createTreeWalker(content, NodeFilter.SHOW_TEXT, null);
+      for (let t; (t = tw.nextNode());) originalText.set(t, t.nodeValue);
+
+      groups.push({ container: key, scaler, content, width: W, height: H, prevStyle, locked, nodes: [], moved, originalText });
+      seen.add(key);
+    }
+
+    for (const it of items) {
+      const g = groups.find(gr => gr.container === it.container);
+      if (g) g.nodes.push(it);
+    }
+    debugLog("collectGroups", { containers: groups.length, textNodes: items.length });
+    return groups;
+  }
+
+  // ---------- Strong Undo ----------
+  function buildUndo(groups){
+    return () => {
+      for (const g of groups) {
+        try {
+          // 1) Restore original text nodes
+          g.originalText.forEach((val, node) => { try { node.nodeValue = val; } catch {} });
+
+          // 2) Put moved children back before the wrapper (if present) or before scaler
+          const anchor = g.container.__i18nAbsWrap || g.scaler;
+          for (const ch of g.moved) {
+            try {
+              if (anchor && anchor.parentNode === g.container) g.container.insertBefore(ch, anchor);
+              else g.container.appendChild(ch);
+            } catch {}
+          }
+
+          // 3) Remove absolute wrapper (preferred) or scaler fallback
+          try {
+            if (g.container.__i18nAbsWrap) {
+              g.container.__i18nAbsWrap.remove();
+              delete g.container.__i18nAbsWrap;
+            } else if (g.scaler && g.scaler.parentNode) {
+              g.scaler.remove();
+            }
+          } catch {}
+
+          // 4) Restore container inline style
+          if (g.prevStyle === null) g.container.removeAttribute("style");
+          else g.container.setAttribute("style", g.prevStyle);
+
+          // 5) Cleanup flags/refs
+          if (g.container.dataset) { delete g.container.dataset.i18nContainer; delete g.container.dataset.i18nSkip; }
+          try { delete g.container.__i18nScaler; delete g.container.__i18nContent; delete g.container.__i18nMoved; } catch {}
+        } catch (e) { console.warn("Undo error on a container:", e); }
+      }
+      console.log(`Undo complete: restored ${groups.length} containers.`);
+    };
+  }
+
+  // ---------- Batching ----------
+  function chunkSrc(objs, maxBytes){
+    const batches=[]; let cur=[], curBytes=0;
+    for (const o of objs) {
+      const add = bytes(o.text);
+      if (cur.length && curBytes + add > maxBytes) { batches.push(cur); cur=[o]; curBytes=add; }
+      else { cur.push(o); curBytes += add; }
+    }
+    if (cur.length) batches.push(cur);
+    return batches;
+  }
+
+  // ---------- Gemini (ID-safe) using YOUR body format ----------
+  function mkInstruction(instr){
+    return [
+      instr,
+      "You will receive a JSON array 'src' with items {\"id\": <number>, \"text\": <string>}.",
+      "Return STRICT JSON: {\"dst\": [{\"id\": <same number>, \"text\": <translated string>}, ...]}",
+      "You MUST return the SAME ids; do not omit or invent ids.",
+      "Do NOT merge, split, drop, or add items.",
+      "Preserve numbers, dates, IDs/SKU codes and currency codes/symbols as appropriate.",
+      "Translate ALL human-readable text into the selected target language, regardless of script (Chinese, Japanese, Korean, Hindi, Thai, Arabic, Cyrillic, etc.). Translate language labels like 'Chinese:' and 'Korean:' as normal text. Ensure every dst.text is fully written in the selected target language; do not echo any source-language words or scripts in the output (except strict code tokens and currency symbols). Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.",
+      "Leave currency prefixes/symbols such as US$, RM, TW$, and $ unchanged.",
+      "No code fences."
+    ].join("\n");
+  }
+
+  async function callGemini(API_KEY, srcArr, instr, setAbort){
+    debugLog("callGemini:start", { size: srcArr.length, sample: srcArr[0]?.text?.slice(0, 60) || "" });
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(API_KEY)}`;
+
+    const contents = [{
+      role: "user",
+      parts: [{ text: `${mkInstruction(instr)}\n\nsrc = ${JSON.stringify(srcArr)}` }]
+    }];
+
+    // Your config fields (we’ll map response_mime_type -> responseMimeType for the API)
+    const config = {
+      temperature: TEMPERATURE,
+      ...(TOP_P > 0 && { topP: TOP_P }),
+      response_mime_type: RESP_MIME
+    };
+
+    // Build body per your structure
+    const body = {
+      contents,
+      safetySettings: [
+        { category: "HARM_CATEGORY_HARASSMENT",         threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_HATE_SPEECH",         threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",   threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_DANGEROUS_CONTENT",   threshold: "BLOCK_NONE" }
+      ],
+      generationConfig: {
+        ...config,
+        // Map to the API’s expected camelCase key:
+        responseMimeType: config.response_mime_type,
+        thinkingConfig: { thinkingBudget: Math.max(0, Number.isFinite(+THINK_BUDGET) ? +THINK_BUDGET : 0) }
+      }
+    };
+
+    // Remove snake_case duplicate to avoid confusion
+    delete body.generationConfig.response_mime_type;
+
+    const ac = new AbortController(); setAbort?.(ac);
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: ac.signal
+    });
+
+    const ok = res.ok;
+    let dataText = "";
+    try { dataText = await res.text(); } catch {}
+    if (!ok) throw new Error(`Gemini HTTP ${res.status}: ${dataText || res.statusText}`);
+
+    let data;
+    try { data = JSON.parse(dataText); }
+    catch {
+      const t = dataText.trim().replace(/^\s*```(?:json)?\s*/i,"").replace(/\s*```\s*$/i,"");
+      data = JSON.parse(t);
+    }
+
+    let out = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+    if (!out.trim()) {
+      const b64 = data?.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (b64) out = atob(b64);
+    }
+    out = out.replace(/^\s*```(?:json)?\s*/i,"").replace(/\s*```\s*$/i,"").trim();
+
+    let parsed;
+    try { parsed = JSON.parse(out); }
+    catch { if (data && Array.isArray(data.dst)) parsed = data; else throw new Error("Model did not return valid JSON."); }
+    if (!parsed || !Array.isArray(parsed.dst)) throw new Error("Translator response missing dst.");
+
+    const map = new Map();
+  for (const row of parsed.dst) if (row && typeof row.id === "number" && typeof row.text === "string") map.set(row.id, row.text);
+  debugLog("callGemini:done", { received: map.size });
+  return map;
+}
+
+async function translateBatch(API_KEY, batch, instr, setAbort){
+  debugLog("translateBatch:start", { count: batch.length });
+  const map = await callGemini(API_KEY, batch, instr, setAbort);
+  const missing = batch.filter(o => !map.has(o.id));
+  if (missing.length) {
+      debugLog("translateBatch:retryMissing", { missing: missing.length });
+      for (const m of missing) {
+        try { const mm = await callGemini(API_KEY, [m], instr, setAbort); if (mm.has(m.id)) map.set(m.id, mm.get(m.id)); }
+        catch { map.set(m.id, m.text); }
+      }
+  }
+  debugLog("translateBatch:done", { final: map.size });
+  return map;
+}
+
+// ---------- Main flow ----------
+async function runTranslate(targetLang){
+    const lang = LANGS.find(l=>l.v===targetLang) || LANGS[0];
+    debugLog("runTranslate", { target: lang.v, label: lang.label });
+    localStorage.setItem(LS_LANG, lang.v);
+    const loader = createFullscreenLoader();
+
+    try{
+      const API_KEY=getApiKey();
+      loader.setProgress(2, `Scanning page… (${lang.label})`);
+
+      const groups = collectGroups();
+      if (!groups.length) { loader.setProgress(100,"No text to translate",""); return; }
+
+      // Build id mapping (stable id -> exact Text node)
+      const srcObjs = [];
+      const idToTextNode = [];
+      let id = 0;
+      for (const g of groups) {
+        const walker = document.createTreeWalker(g.content, NodeFilter.SHOW_TEXT, null);
+        for (let t; (t = walker.nextNode()); ) {
+          const txt = NORMALIZE_WS ? normalizeWS(t.nodeValue) : t.nodeValue;
+          if (!txt) continue;
+          srcObjs.push({ id, text: txt });
+          idToTextNode[id] = t;
+          id++;
+        }
+      }
+
+      // Prepare Undo
+      window.__i18nUndo = buildUndo(groups);
+
+      const batches = chunkSrc(srcObjs, MAX_BYTES_PER_BATCH);
+      loader.setProgress(5, "Preparing translation…", `Containers: ${groups.length} · Text nodes: ${srcObjs.length} · Batches: ${batches.length}`);
+      debugLog("runTranslate:scanResult", { containers: groups.length, textNodes: srcObjs.length, batches: batches.length });
+
+      const translated = new Map();
+      for (let i=0;i<batches.length;i++){
+        if (loader.isCancelled()) throw new Error("Translation cancelled.");
+        loader.setProgress(5 + (i/batches.length)*70, `Translating… (${i+1}/${batches.length})`, `${batches[i].length} strings`);
+        debugLog("runTranslate:batch", { index: i+1, of: batches.length, strings: batches[i].length });
+        const map = await translateBatch(window.geminiApiKey, batches[i], lang.instr, (ac)=>loader.setAbortController(ac));
+        map.forEach((v,k)=>translated.set(k,v));
+      }
+
+      const unresolved = [];
+      for (let i=0;i<srcObjs.length;i++){
+        const original = srcObjs[i]?.text ?? "";
+        const result = translated.get(i);
+        if (typeof result === "string" && !needsSecondPass(original, result)) continue;
+        if (!original) continue;
+        unresolved.push({ id: i, text: original });
+      }
+
+      if (false && unresolved.length) {
+        debugLog("forceTranslate:retry", { count: unresolved.length });
+        const forceInstr = `${lang.instr} Translate ALL human-readable text into ${lang.label}. Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.`;
+        const forceBatches = chunkSrc(unresolved, MAX_BYTES_PER_BATCH);
+        let updated = 0;
+        for (let i=0;i<forceBatches.length;i++) {
+          debugLog("forceTranslate:batch", { index: i+1, of: forceBatches.length, strings: forceBatches[i].length });
+          const retryMap = await callGemini(window.geminiApiKey, forceBatches[i], forceInstr, (ac)=>loader.setAbortController(ac));
+          retryMap.forEach((v,k)=>{ translated.set(k,v); updated++; });
+        }
+        debugLog("forceTranslate:done", { updated });
+      }
+
+      loader.setProgress(80, "Applying to page…");
+      for (let i=0;i<idToTextNode.length;i++){
+        const node = idToTextNode[i];
+        const t = translated.get(i);
+        if (node && typeof t === "string") {
+          // 打印每一条 原文→译文（包括未变化的文本）
+          if (DEBUG_TRANSLATE && (window.temp_debug_mode || 'n') === 'y') {
+            const beforeRaw = srcObjs[i]?.text ?? node.nodeValue;
+            const afterRaw = t;
+            const trimmedBefore = beforeRaw?.slice?.(0, 160) || "";
+            const trimmedAfter = afterRaw?.slice?.(0, 160) || "";
+            debugLog("apply", { id: i, before: trimmedBefore, after: trimmedAfter });
+          }
+          node.nodeValue = t;
+        }
+      }
+
+      // Fit each container's content into the locked box
+      for (const g of groups) {
+        g.scaler.style.transform = "none";
+        if (!g.locked) continue;
+        const W = Math.max(1, g.width);
+        const H = Math.max(1, g.height);
+        const sw = Math.max(g.content.scrollWidth, g.scaler.scrollWidth, g.content.offsetWidth);
+        const sh = Math.max(g.content.scrollHeight, g.scaler.scrollHeight, g.content.offsetHeight);
+        let sx = W / sw;
+        let sy = H / sh;
+        if (!isFinite(sy) || sy <= 0) sy = sx;
+        // Quick-fix: consider height as well; remove width-only short-circuit
+        let s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
+        if (s < 1) g.scaler.style.transform = "scale(" + s + ")";
+      }
+      loader.setProgress(100, "Done", "");
+      console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
+      debugLog("runTranslate:complete", { applied: idToTextNode.length });
+    } catch (err) {
+      debugLog("runTranslate:error", err);
+      console.error(err);
+      try { loader.setProgress(100, "Error", err?.message || "Unexpected error"); } catch {}
+    }
+  }
+
+  // ---------- Sticky control ----------
+  let stickyCtrlEl = null;
+  let stickySelectEl = null;
+
+  function ensureStickyControlStyles(){
+    if(document.getElementById("__i18n_select_style__")) return;
+    const s=document.createElement("style");
+    s.id="__i18n_select_style__";
+    s.textContent=`
+      #__i18n_sticky_ctrl__ {
+        box-sizing:border-box;
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+        align-items:stretch;
+        opacity:1;
+        transform:translateY(0);
+        transition:opacity 160ms ease, transform 160ms ease;
+      }
+      #__i18n_sticky_ctrl__[data-visible="0"] {
+        opacity:0;
+        pointer-events:none;
+        transform:translateY(-8px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_header {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:10px;
+        flex-wrap:wrap;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_title {
+        font-size:13px;
+        font-weight:600;
+        letter-spacing:.3px;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close {
+        appearance:none;
+        border:1px solid rgba(255,255,255,.15);
+        background:rgba(255,255,255,.14);
+        color:#fff;
+        width:28px;
+        height:28px;
+        border-radius:50%;
+        cursor:pointer;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:16px;
+        line-height:1;
+        flex-shrink:0;
+        transition:background .18s ease, border-color .18s ease, transform .18s ease;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close:hover {
+        background:rgba(255,255,255,.24);
+        border-color:rgba(255,255,255,.25);
+        transform:translateY(-1px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close:active {
+        transform:translateY(0);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_close:focus-visible {
+        outline:2px solid rgba(13,110,253,.65);
+        outline-offset:2px;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_row {
+        display:flex;
+        gap:12px;
+        align-items:center;
+        justify-content:space-between;
+        flex-wrap:wrap;
+        width:100%;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_field {
+        flex:1 1 180px;
+        display:flex;
+        flex-direction:column;
+        gap:6px;
+        min-width:0;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_label {
+        font-size:11px;
+        letter-spacing:.2px;
+        opacity:.85;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_select {
+        width:100%;
+        min-width:0;
+        border-radius:10px;
+        border:1px solid rgba(255,255,255,.35);
+        background:rgba(255,255,255,.08);
+        color:#fff;
+        font-size:13px;
+        padding:6px 10px;
+        outline:none;
+        transition:border-color .18s ease, background .18s ease;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_select option {
+        color:#111;
+        background:#fff;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_select:focus {
+        outline:2px solid rgba(13,110,253,.65);
+        outline-offset:2px;
+        border-color:rgba(13,110,253,.8);
+        background:rgba(255,255,255,.18);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_actions {
+        display:flex;
+        align-items:center;
+        gap:10px;
+        flex-wrap:wrap;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn {
+        border:1px solid rgba(255,255,255,.3);
+        background:rgba(255,255,255,.12);
+        color:#fff;
+        padding:8px 16px;
+        border-radius:12px;
+        font-size:12px;
+        font-weight:600;
+        cursor:pointer;
+        transition:background .18s ease, border-color .18s ease, transform .18s ease;
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn:hover {
+        background:rgba(255,255,255,.22);
+        transform:translateY(-1px);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn:active {
+        transform:translateY(0);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn.is-primary {
+        background:var(--accent);
+        border-color:var(--accent);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn.is-primary:hover {
+        background:rgba(13,110,253,.9);
+      }
+      #__i18n_sticky_ctrl__ .__i18n_btn:focus-visible {
+        outline:2px solid rgba(13,110,253,.65);
+        outline-offset:2px;
+      }
+      @media (max-width:600px) {
+        #__i18n_sticky_ctrl__ {
+          right:12px;
+          left:12px;
+          top:auto;
+          bottom:20px;
+          max-width:none;
+          width:auto;
+        }
+        #__i18n_sticky_ctrl__ .__i18n_row {
+          flex-direction:column;
+          align-items:stretch;
+          gap:10px;
+        }
+        #__i18n_sticky_ctrl__ .__i18n_actions {
+          width:100%;
+        }
+        #__i18n_sticky_ctrl__ .__i18n_actions .__i18n_btn {
+          flex:1 1 auto;
+          width:100%;
+          text-align:center;
+        }
+      }
+    `;
+    document.head.appendChild(s);
+  }
+  if(!document.getElementById("__i18n_print_style__")){
+    const p=document.createElement("style");
+    p.id="__i18n_print_style__";
+    p.textContent='@media print { #__i18n_sticky_ctrl__, #btn-ai-translate, [data-i18n-toggle="ai-translate"] { display:none !important; } }';
+    document.head.appendChild(p);
+  }
+
+  function mountStickyControl(){
+    const old=document.getElementById("__i18n_sticky_ctrl__"); if(old) old.remove();
+    ensureStickyControlStyles();
+    const wrap=document.createElement("div");
+    wrap.id="__i18n_sticky_ctrl__";
+    wrap.className="__i18n_panel";
+    wrap.dataset.i18nSkip="1";
+    wrap.style.cssText="position:fixed;top:32px;right:20px;z-index:2147483646;display:none;background:rgba(18,19,23,.9);backdrop-filter:blur(10px);color:#fff;border-radius:14px;padding:18px 20px;box-shadow:0 20px 38px rgba(0,0,0,.28);border:1px solid rgba(255,255,255,.08);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,Noto Sans,Helvetica Neue,sans-serif;max-width:min(90vw,380px);width:auto;min-width:0;";
+    wrap.setAttribute("role","dialog");
+    wrap.setAttribute("aria-label","Gemini translate controls");
+    wrap.setAttribute("aria-hidden","true");
+    wrap.setAttribute("data-visible","0");
+    const header=document.createElement("div"); header.className="__i18n_header";
+    const title=document.createElement("span"); title.className="__i18n_title"; title.textContent="Gemini Translate";
+    const btnClose=document.createElement("button"); btnClose.type="button"; btnClose.className="__i18n_close"; btnClose.setAttribute("aria-label","Close translate controls"); btnClose.title="Close";
+    btnClose.innerHTML="&#215;";
+    header.appendChild(title); header.appendChild(btnClose);
+    const label=document.createElement("span"); label.className="__i18n_label"; label.textContent="Translate to:";
+    const select=document.createElement("select"); select.className="__i18n_select";
+    LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
+    const savedLang = (localStorage.getItem(LS_LANG) || "").trim();
+    if (savedLang && LANGS.some(l=>l.v === savedLang)) select.value = savedLang;
+    else select.value = LANGS[0]?.v || "zh-CN";
+    localStorage.setItem(LS_LANG, select.value);
+    const btnGo=document.createElement("button"); btnGo.type="button"; btnGo.className="__i18n_btn is-primary"; btnGo.textContent="Translate";
+    const btnReset=document.createElement("button"); btnReset.type="button"; btnReset.className="__i18n_btn"; btnReset.textContent="Reset";
+    const btnKey=document.createElement("button"); btnKey.type="button"; btnKey.className="__i18n_btn"; btnKey.textContent="Key"; btnKey.title="Set/clear Gemini API key"; btnKey.style.display="none";
+    const field=document.createElement("div"); field.className="__i18n_field"; field.appendChild(label); field.appendChild(select);
+    const actions=document.createElement("div"); actions.className="__i18n_actions"; actions.appendChild(btnGo); actions.appendChild(btnReset);
+    const row=document.createElement("div"); row.className="__i18n_row"; row.appendChild(field); row.appendChild(actions);
+    wrap.appendChild(header);
+    wrap.appendChild(row);
+    wrap.appendChild(btnKey);
+    select.addEventListener("change", ()=>{
+      const v = String(select.value || "").trim();
+      localStorage.setItem(LS_LANG, v);
+    });
+    const toolbar=document.querySelector(".toolbar");
+    if(toolbar && toolbar.parentNode){
+      toolbar.parentNode.insertBefore(wrap, toolbar.nextSibling);
+    } else if(document.body.firstChild){
+      document.body.insertBefore(wrap, document.body.firstChild);
+    } else {
+      document.body.appendChild(wrap);
+    }
+    stickyCtrlEl = wrap;
+    stickySelectEl = select;
+
+    btnGo.addEventListener("click", ()=> runTranslate(select.value));
+    btnReset.addEventListener("click", ()=>{ window.location.reload(); });
+    btnClose.addEventListener("click", ()=>{
+      setStickyCtrlVisibility(false);
+    });
+    btnKey.addEventListener("click", ()=>{
+      const curr=(window.geminiApiKey || localStorage.getItem(LS_KEY) || "");
+      const k=prompt("Gemini API key (leave blank to clear):", curr||"");
+      if(k==null) return;
+      const v=String(k).trim();
+      if(!v) clearGeminiKey(); else setGeminiKey(v);
+    });
+  }
+
+  function setStickyCtrlVisibility(force){
+    const el = (stickyCtrlEl && document.body.contains(stickyCtrlEl)) ? stickyCtrlEl : document.getElementById("__i18n_sticky_ctrl__");
+    if(!el) return;
+    const toggleBtn = document.querySelector(TOGGLE_BUTTON_SELECTOR);
+    let shouldShow;
+    if(typeof force === "boolean") shouldShow = force;
+    else shouldShow = el.getAttribute("data-visible") !== "1";
+    el.setAttribute("data-visible", shouldShow ? "1" : "0");
+    el.style.display = shouldShow ? "flex" : "none";
+    if(shouldShow){
+      if (stickySelectEl) {
+        const saved = (localStorage.getItem(LS_LANG) || "").trim();
+        if (saved && LANGS.some(l=>l.v === saved)) stickySelectEl.value = saved;
+      }
+      el.removeAttribute("aria-hidden");
+      requestAnimationFrame(()=> stickySelectEl?.focus());
+      if(toggleBtn){ toggleBtn.setAttribute("aria-pressed","true"); toggleBtn.classList.add("is-active"); }
+    } else {
+      el.setAttribute("aria-hidden","true");
+      if(toggleBtn){ toggleBtn.setAttribute("aria-pressed","false"); toggleBtn.classList.remove("is-active"); }
+    }
+  }
+
+  // Init
+  mountStickyControl();
+  window.__i18nToggleTranslatePanel = (force) => {
+    if(!stickyCtrlEl || !document.body.contains(stickyCtrlEl)) mountStickyControl();
+    setStickyCtrlVisibility(force);
+  };
+  window.__i18nRunTranslate = runTranslate;
+})();
+
+</script>
+<!-- i18n Gemini Translate [end  ] -->
