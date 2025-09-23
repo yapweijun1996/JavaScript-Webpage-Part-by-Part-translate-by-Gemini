@@ -84,7 +84,9 @@ if (btnTranslate) {
   const AUTO_CLOSE_MS = 900;
   const MIN_SCALE = 0.6;
   const SCALE_TRANSITION_MS = 80;
-  const TOGGLE_BUTTON_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
+  // Reuse one global toggle selector to avoid duplication
+  const TOGGLE_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
+  const ENABLE_SECOND_PASS = false;
 
   const LANGS = [
     { v: "zh-CN", label: "Mandarin — Mainland (简体)", instr: "Translate to Simplified Chinese (Mainland style)." },
@@ -488,114 +490,110 @@ async function translateBatch(API_KEY, batch, instr, setAbort){
   return map;
 }
 
-// ---------- Main flow ----------
-async function runTranslate(targetLang){
-    const lang = LANGS.find(l=>l.v===targetLang) || LANGS[0];
-    debugLog("runTranslate", { target: lang.v, label: lang.label });
-    localStorage.setItem(LS_LANG, lang.v);
-    const loader = createFullscreenLoader();
-
-    try{
-      const API_KEY=getApiKey();
-      loader.setProgress(2, `Scanning page… (${lang.label})`);
-
-      const groups = collectGroups();
-      if (!groups.length) { loader.setProgress(100,"No text to translate",""); return; }
-
-      // Build id mapping (stable id -> exact Text node)
-      const srcObjs = [];
-      const idToTextNode = [];
-      let id = 0;
-      for (const g of groups) {
-        const walker = document.createTreeWalker(g.content, NodeFilter.SHOW_TEXT, null);
-        for (let t; (t = walker.nextNode()); ) {
-          const txt = NORMALIZE_WS ? normalizeWS(t.nodeValue) : t.nodeValue;
-          if (!txt) continue;
-          srcObjs.push({ id, text: txt });
-          idToTextNode[id] = t;
-          id++;
-        }
-      }
-
-      // Prepare Undo
-      window.__i18nUndo = buildUndo(groups);
-
-      const batches = chunkSrc(srcObjs, MAX_BYTES_PER_BATCH);
-      loader.setProgress(5, "Preparing translation…", `Containers: ${groups.length} · Text nodes: ${srcObjs.length} · Batches: ${batches.length}`);
-      debugLog("runTranslate:scanResult", { containers: groups.length, textNodes: srcObjs.length, batches: batches.length });
-
-      const translated = new Map();
-      for (let i=0;i<batches.length;i++){
-        if (loader.isCancelled()) throw new Error("Translation cancelled.");
-        loader.setProgress(5 + (i/batches.length)*70, `Translating… (${i+1}/${batches.length})`, `${batches[i].length} strings`);
-        debugLog("runTranslate:batch", { index: i+1, of: batches.length, strings: batches[i].length });
-        const map = await translateBatch(window.geminiApiKey, batches[i], lang.instr, (ac)=>loader.setAbortController(ac));
-        map.forEach((v,k)=>translated.set(k,v));
-      }
-
-      const unresolved = [];
-      for (let i=0;i<srcObjs.length;i++){
-        const original = srcObjs[i]?.text ?? "";
-        const result = translated.get(i);
-        if (typeof result === "string" && !needsSecondPass(original, result)) continue;
-        if (!original) continue;
-        unresolved.push({ id: i, text: original });
-      }
-
-      if (false && unresolved.length) {
-        debugLog("forceTranslate:retry", { count: unresolved.length });
-        const forceInstr = `${lang.instr} Translate ALL human-readable text into ${lang.label}. Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.`;
-        const forceBatches = chunkSrc(unresolved, MAX_BYTES_PER_BATCH);
-        let updated = 0;
-        for (let i=0;i<forceBatches.length;i++) {
-          debugLog("forceTranslate:batch", { index: i+1, of: forceBatches.length, strings: forceBatches[i].length });
-          const retryMap = await callGemini(window.geminiApiKey, forceBatches[i], forceInstr, (ac)=>loader.setAbortController(ac));
-          retryMap.forEach((v,k)=>{ translated.set(k,v); updated++; });
-        }
-        debugLog("forceTranslate:done", { updated });
-      }
-
-      loader.setProgress(80, "Applying to page…");
-      for (let i=0;i<idToTextNode.length;i++){
-        const node = idToTextNode[i];
-        const t = translated.get(i);
-        if (node && typeof t === "string") {
-          // 打印每一条 原文→译文（包括未变化的文本）
-          if (DEBUG_TRANSLATE && (window.temp_debug_mode || 'n') === 'y') {
-            const beforeRaw = srcObjs[i]?.text ?? node.nodeValue;
-            const afterRaw = t;
-            const trimmedBefore = beforeRaw?.slice?.(0, 160) || "";
-            const trimmedAfter = afterRaw?.slice?.(0, 160) || "";
-            debugLog("apply", { id: i, before: trimmedBefore, after: trimmedAfter });
-          }
-          node.nodeValue = t;
-        }
-      }
-
-      // Fit each container's content into the locked box
-      for (const g of groups) {
-        g.scaler.style.transform = "none";
-        if (!g.locked) continue;
-        const W = Math.max(1, g.width);
-        const H = Math.max(1, g.height);
-        const sw = Math.max(g.content.scrollWidth, g.scaler.scrollWidth, g.content.offsetWidth);
-        const sh = Math.max(g.content.scrollHeight, g.scaler.scrollHeight, g.content.offsetHeight);
-        let sx = W / sw;
-        let sy = H / sh;
-        if (!isFinite(sy) || sy <= 0) sy = sx;
-        // Quick-fix: consider height as well; remove width-only short-circuit
-        let s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
-        if (s < 1) g.scaler.style.transform = "scale(" + s + ")";
-      }
-      loader.setProgress(100, "Done", "");
-      console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
-      debugLog("runTranslate:complete", { applied: idToTextNode.length });
-    } catch (err) {
-      debugLog("runTranslate:error", err);
-      console.error(err);
-      try { loader.setProgress(100, "Error", err?.message || "Unexpected error"); } catch {}
+// ---------- Pipeline helpers & main flow ----------
+function scanPage() {
+  const groups = collectGroups();
+  const srcObjs = [];
+  const idToTextNode = [];
+  let id = 0;
+  for (const g of groups) {
+    const walker = document.createTreeWalker(g.content, NodeFilter.SHOW_TEXT, null);
+    for (let t; (t = walker.nextNode()); ) {
+      const txt = NORMALIZE_WS ? normalizeWS(t.nodeValue) : t.nodeValue;
+      if (!txt) continue;
+      srcObjs.push({ id, text: txt });
+      idToTextNode[id] = t;
+      id++;
     }
   }
+  return { groups, srcObjs, idToTextNode, undo: buildUndo(groups) };
+}
+
+async function translateAll(apiKey, srcObjs, lang, loader) {
+  const batches = chunkSrc(srcObjs, MAX_BYTES_PER_BATCH);
+  loader.setProgress(5, "Preparing translation…", `Text nodes: ${srcObjs.length} · Batches: ${batches.length}`);
+  debugLog("translateAll:plan", { textNodes: srcObjs.length, batches: batches.length });
+  const translated = new Map();
+  for (let i = 0; i < batches.length; i++) {
+    if (loader.isCancelled()) throw new Error("Translation cancelled.");
+    loader.setProgress(5 + (i / batches.length) * 70, `Translating… (${i + 1}/${batches.length})`, `${batches[i].length} strings`);
+    const map = await translateBatch(apiKey, batches[i], lang.instr, (ac) => loader.setAbortController(ac));
+    map.forEach((v, k) => translated.set(k, v));
+  }
+  if (ENABLE_SECOND_PASS) {
+    const unresolved = [];
+    for (let i = 0; i < srcObjs.length; i++) {
+      const original = srcObjs[i]?.text ?? "";
+      const result = translated.get(i);
+      if (typeof result === "string" && !needsSecondPass(original, result)) continue;
+      if (!original) continue;
+      unresolved.push({ id: i, text: original });
+    }
+    if (unresolved.length) {
+      const forceInstr = `${lang.instr} Translate ALL human-readable text into ${lang.label}. Preserve product codes, IDs/SKUs, currency symbols (US$, RM, TW$), dates and numbers. Do not merge/split/drop items.`;
+      const forceBatches = chunkSrc(unresolved, MAX_BYTES_PER_BATCH);
+      for (let i = 0; i < forceBatches.length; i++) {
+        const retryMap = await callGemini(apiKey, forceBatches[i], forceInstr, (ac) => loader.setAbortController(ac));
+        retryMap.forEach((v, k) => translated.set(k, v));
+      }
+    }
+  }
+  return translated;
+}
+
+function applyResults(groups, srcObjs, idToTextNode, translated, loader) {
+  loader.setProgress(80, "Applying to page…");
+  for (let i = 0; i < idToTextNode.length; i++) {
+    const node = idToTextNode[i];
+    const t = translated.get(i);
+    if (node && typeof t === "string") {
+      if (DEBUG_TRANSLATE && (window.temp_debug_mode || 'n') === 'y') {
+        const beforeRaw = srcObjs[i]?.text ?? node.nodeValue;
+        const afterRaw = t;
+        const trimmedBefore = beforeRaw?.slice?.(0, 160) || "";
+        const trimmedAfter = afterRaw?.slice?.(0, 160) || "";
+        debugLog("apply", { id: i, before: trimmedBefore, after: trimmedAfter });
+      }
+      node.nodeValue = t;
+    }
+  }
+  for (const g of groups) {
+    g.scaler.style.transform = "none";
+    if (!g.locked) continue;
+    const W = Math.max(1, g.width);
+    const H = Math.max(1, g.height);
+    const sw = Math.max(g.content.scrollWidth, g.scaler.scrollWidth, g.content.offsetWidth);
+    const sh = Math.max(g.content.scrollHeight, g.scaler.scrollHeight, g.content.offsetHeight);
+    let sx = W / sw;
+    let sy = H / sh;
+    if (!isFinite(sy) || sy <= 0) sy = sx;
+    const s = Math.max(MIN_SCALE, Math.min(1, Math.min(sx, sy)));
+    if (s < 1) g.scaler.style.transform = `scale(${s})`;
+  }
+}
+
+async function runTranslate(targetLang){
+  const lang = LANGS.find(l => l.v === targetLang) || LANGS[0];
+  debugLog("runTranslate", { target: lang.v, label: lang.label });
+  localStorage.setItem(LS_LANG, lang.v);
+  const loader = createFullscreenLoader();
+  try {
+    const apiKey = getApiKey();
+    loader.setProgress(2, `Scanning page… (${lang.label})`);
+    const { groups, srcObjs, idToTextNode, undo } = scanPage();
+    if (!groups.length) { loader.setProgress(100, "No text to translate", ""); return; }
+    window.__i18nUndo = undo;
+    const translated = await translateAll(apiKey, srcObjs, lang, loader);
+    applyResults(groups, srcObjs, idToTextNode, translated, loader);
+    loader.setProgress(100, "Done", "");
+    console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
+    debugLog("runTranslate:complete", { applied: idToTextNode.length });
+  } catch (err) {
+    debugLog("runTranslate:error", err);
+    console.error(err);
+    try { loader.setProgress(100, "Error", err?.message || "Unexpected error"); } catch {}
+  }
+}
 
   // ---------- Sticky control ----------
   let stickyCtrlEl = null;
@@ -837,7 +835,7 @@ async function runTranslate(targetLang){
   function setStickyCtrlVisibility(force){
     const el = (stickyCtrlEl && document.body.contains(stickyCtrlEl)) ? stickyCtrlEl : document.getElementById("__i18n_sticky_ctrl__");
     if(!el) return;
-    const toggleBtn = document.querySelector(TOGGLE_BUTTON_SELECTOR);
+    const toggleBtn = document.querySelector(TOGGLE_SELECTOR);
     let shouldShow;
     if(typeof force === "boolean") shouldShow = force;
     else shouldShow = el.getAttribute("data-visible") !== "1";
