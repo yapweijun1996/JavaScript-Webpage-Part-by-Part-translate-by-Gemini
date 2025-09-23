@@ -670,6 +670,8 @@ async function runTranslate(targetLang){
     const translated = await translateAll(apiKey, srcObjs, lang, loader);
     applyResults(groups, srcObjs, idToTextNode, translated, loader);
     loader.setProgress(100, "Done", "");
+    // Auto-close the sticky control when translation completes successfully
+    try { setStickyCtrlVisibility(false); } catch {}
     console.log(`Translated ${idToTextNode.length} text nodes across ${groups.length} containers (hard size lock).`);
     debugLog("runTranslate:complete", { applied: idToTextNode.length });
   } catch (err) {
