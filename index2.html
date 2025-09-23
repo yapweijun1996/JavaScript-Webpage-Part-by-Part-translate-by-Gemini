@@ -11,6 +11,10 @@
 <td style="box-sizing:border-box;">We are Testing width for td3</td>
 <td style="box-sizing:border-box;">We are Testing width for td4</td>
 </tr>
+<tr>
+<td style="box-sizing:border-box;"><button type="button">Test Button</button></td>
+<td style="box-sizing:border-box;">We are Testing width for td4</td>
+</tr>
 </table>
 
 
@@ -34,6 +38,9 @@ if (btnTranslate) {
   if (!btnTranslate.hasAttribute('data-i18n-toggle')) {
     btnTranslate.setAttribute('data-i18n-toggle', 'ai-translate');
   }
+  // Exclude the toggle button from i18n scanning/locking
+  btnTranslate.setAttribute('data-i18n-skip', '1');
+
   btnTranslate.addEventListener('click', () => {
     if (typeof window.__i18nToggleTranslatePanel === 'function') {
       window.__i18nToggleTranslatePanel();
@@ -176,6 +183,11 @@ if (btnTranslate) {
         const p = node.parentElement;
         if (!p || TAG_SKIP.has(p.tagName)) return NodeFilter.FILTER_REJECT;
         if (p.closest?.('[data-i18n-skip="1"]')) return NodeFilter.FILTER_REJECT;
+        // Interactive controls are skipped by default, unless an ancestor explicitly opts in with data-i18n-translate="1"
+        const interactiveAncestor = p.closest?.('button, input, select, textarea, [role="button"]');
+        if (interactiveAncestor && !interactiveAncestor.hasAttribute('data-i18n-translate')) {
+          return NodeFilter.FILTER_REJECT;
+        }
         if (ONLY_VISIBLE && !isVisible(p)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       }
@@ -220,7 +232,9 @@ if (btnTranslate) {
         scaler.style.display = (csOriginal.display === "inline") ? "inline-block" : "block";
       }
 
-      const shouldLock = !WEAK_CONTAINER_TAGS.has(key.tagName);
+      // Do not hard-lock interactive controls (buttons/inputs), even if they opt in for translation
+      const interactiveForLock = key.closest('button, input, select, textarea, [role="button"]');
+      const shouldLock = !WEAK_CONTAINER_TAGS.has(key.tagName) && !interactiveForLock;
       const { W, H, prevStyle, locked } = __i18n_lockContainerSize(key, shouldLock);
       // Ensure scaler fills its immediate wrapper
       scaler.style.width = "100%";
