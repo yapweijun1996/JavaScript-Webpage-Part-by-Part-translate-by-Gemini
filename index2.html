@@ -239,9 +239,12 @@ if (btnTranslate) {
       const interactiveForLock = key.closest('button, input, select, textarea, [role="button"]');
       const shouldLock = !WEAK_CONTAINER_TAGS.has(key.tagName) && !interactiveForLock;
       const { W, H, prevStyle, locked } = __i18n_lockContainerSize(key, shouldLock);
-      // Ensure scaler fills its immediate wrapper
-      scaler.style.width = "100%";
-      scaler.style.height = "100%";
+      // Ensure scaler matches measured bounds so scaled content respects original geometry
+      const rect = key.getBoundingClientRect();
+      const widthPx = rect?.width && !Number.isNaN(rect.width) ? rect.width : W;
+      const heightPx = rect?.height && !Number.isNaN(rect.height) ? rect.height : H;
+      scaler.style.width = Math.max(1, widthPx) + "px";
+      scaler.style.height = Math.max(1, heightPx) + "px";
 
       // Absolute wrapper for table cells: detach scalable content from table flow
       // so the table row height is no longer influenced by post-translation content.
