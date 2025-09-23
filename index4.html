@@ -36,7 +36,7 @@
 
 <!-- i18n Gemini Translate [start] -->
 <script>
-// === I18N Translate-In-Place � Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
+// === I18N Translate-In-Place — Container-Fit + Hard Size Lock + ID-Safe + Strong Undo ===
 // Uses your Gemini body format (model/topP/response_mime_type/thinkingBudget/safetySettings).
 const I18N_TOGGLE_SELECTOR = window.I18N_TOGGLE_SELECTOR || '#btn-ai-translate, [data-i18n-toggle="ai-translate"]';
 window.I18N_TOGGLE_SELECTOR = I18N_TOGGLE_SELECTOR;
@@ -57,6 +57,14 @@ if (btnTranslate) {
 }
 
 (() => {
+  /**
+   * Overview
+   * - scanPage(): collect text nodes, wrap each container with a scaler, and hard-lock container sizes
+   * - translateAll(): batch source strings and call Gemini, preserving id->node mapping
+   * - applyResults(): write translations back to text nodes and scale content to fit locked boxes
+   * - buildUndo(): precise revert for text content, wrappers, and inline styles
+   * - Sticky UI: small floating panel to pick target language and trigger runTranslate()
+   */
 
   // ---------------- Settings ----------------
   const MODEL = "gemini-2.5-flash-lite";
@@ -65,8 +73,8 @@ if (btnTranslate) {
   const RESP_MIME = "application/json";
   const THINK_BUDGET = 512;  // per your request
   const DEBUG_TRANSLATE = Object.prototype.hasOwnProperty.call(window, "I18N_DEBUG") ? !!window.I18N_DEBUG : true;
-  // temp_debug_mode 开关：'y' 输出调试日志，否则不输出
-  // 允许外部覆盖 window.temp_debug_mode（如在控制台设为 'n' 以静默）
+  // temp_debug_mode flag: 'y' enables debug logs, any other value silences them.
+  // You can override from console, e.g. window.temp_debug_mode = 'n'.
   if (typeof window.temp_debug_mode !== 'string') {
     window.temp_debug_mode = 'y';
   }
@@ -103,6 +111,7 @@ if (btnTranslate) {
   ];
 
   // ---------- Key helpers ----------
+  /** Get API key from window/localStorage or prompt the user once. */
   function getApiKey() {
     let k = (window.geminiApiKey || "").trim();
     if (!k) k = (localStorage.getItem(LS_KEY) || "").trim();
@@ -119,6 +128,7 @@ if (btnTranslate) {
   window.clearGeminiKey = () => { window.geminiApiKey=""; localStorage.removeItem(LS_KEY); console.log("Gemini key cleared."); };
 
   // ---------- Loader ----------
+  /** Fullscreen progress overlay with cancel/close controls. */
   function createFullscreenLoader() {
     const old = document.getElementById("__i18n_loader_overlay__"); if (old) old.remove();
     const overlay = document.createElement("div");
@@ -172,6 +182,7 @@ if (btnTranslate) {
     return false;
   };
 
+  /** Choose the nearest non-inline container to host the scaler wrapper. */
   function nearestContainer(el){
     let n = el;
     while (n && n !== document.body) {
@@ -187,6 +198,10 @@ if (btnTranslate) {
   }
 
   // Lock container pixel size; return previous inline style so we can restore.
+  /**
+   * Lock container's pixel width/height to avoid reflow during/after translation.
+   * Returns previous inline style and measured size so we can compute scales and restore later.
+   */
   function __i18n_lockContainerSize(el, lock = true) {
     const prevStyle = el.getAttribute("style") ?? null;
     const W = Math.max(1, el.offsetWidth);
@@ -205,6 +220,11 @@ if (btnTranslate) {
   }
 
   // ---------- Collect & group by container (and lock sizes) ----------
+  /**
+   * Walk the DOM for text nodes (skipping scripts/styles/hidden/interactive by default),
+   * wrap each container with a scaler+content span, and hard-lock sizes.
+   * Also snapshot original text for strong undo.
+   */
   function collectGroups(){
     const items = [];
     const walker = document.createTreeWalker(document.body || document.documentElement, NodeFilter.SHOW_TEXT, {
@@ -335,6 +355,7 @@ if (btnTranslate) {
   }
 
   // ---------- Strong Undo ----------
+  /** Create a strong undo function for the given groups. */
   function buildUndo(groups){
     return () => {
       for (const g of groups) {
@@ -375,6 +396,7 @@ if (btnTranslate) {
   }
 
   // ---------- Batching ----------
+  /** Greedy byte-based batching; avoids oversized payloads. */
   function chunkSrc(objs, maxBytes){
     const batches=[]; let cur=[], curBytes=0;
     for (const o of objs) {
@@ -387,6 +409,7 @@ if (btnTranslate) {
   }
 
   // ---------- Gemini (ID-safe) using YOUR body format ----------
+  /** Build the model instruction prefix for strict ID-preserving translation. */
   function mkInstruction(instr){
     return [
       instr,
@@ -401,6 +424,14 @@ if (btnTranslate) {
     ].join("\n");
   }
 
+  /**
+   * Call Gemini with strict JSON protocol.
+   * @param {string} API_KEY
+   * @param {{id:number,text:string}[]} srcArr
+   * @param {string} instr  Instruction prefix (language-specific)
+   * @param {(ac:AbortController)=>void} setAbort  Callback to expose AbortController to the loader
+   * @returns {Promise<Map<number,string>>}
+   */
   async function callGemini(API_KEY, srcArr, instr, setAbort){
     debugLog("callGemini:start", { size: srcArr.length, sample: srcArr[0]?.text?.slice(0, 60) || "" });
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(MODEL)}:generateContent?key=${encodeURIComponent(API_KEY)}`;
@@ -475,6 +506,7 @@ if (btnTranslate) {
   return map;
 }
 
+/** Translate one batch; retry missing ids individually as a safety net. */
 async function translateBatch(API_KEY, batch, instr, setAbort){
   debugLog("translateBatch:start", { count: batch.length });
   const map = await callGemini(API_KEY, batch, instr, setAbort);
@@ -491,6 +523,10 @@ async function translateBatch(API_KEY, batch, instr, setAbort){
 }
 
 // ---------- Pipeline helpers & main flow ----------
+/**
+ * Collect all groups and produce a flat list of {id,text} with id->TextNode mapping.
+ * Also returns a strong undo function bound to these groups.
+ */
 function scanPage() {
   const groups = collectGroups();
   const srcObjs = [];
@@ -509,6 +545,7 @@ function scanPage() {
   return { groups, srcObjs, idToTextNode, undo: buildUndo(groups) };
 }
 
+/** Translate all strings across batches; optional second pass can be enabled. */
 async function translateAll(apiKey, srcObjs, lang, loader) {
   const batches = chunkSrc(srcObjs, MAX_BYTES_PER_BATCH);
   loader.setProgress(5, "Preparing translation…", `Text nodes: ${srcObjs.length} · Batches: ${batches.length}`);
@@ -541,6 +578,7 @@ async function translateAll(apiKey, srcObjs, lang, loader) {
   return translated;
 }
 
+/** Apply translated strings and scale content to fit locked containers. */
 function applyResults(groups, srcObjs, idToTextNode, translated, loader) {
   loader.setProgress(80, "Applying to page…");
   for (let i = 0; i < idToTextNode.length; i++) {
@@ -572,6 +610,7 @@ function applyResults(groups, srcObjs, idToTextNode, translated, loader) {
   }
 }
 
+/** Orchestrate the whole pipeline: scan → translate → apply. */
 async function runTranslate(targetLang){
   const lang = LANGS.find(l => l.v === targetLang) || LANGS[0];
   debugLog("runTranslate", { target: lang.v, label: lang.label });
@@ -599,6 +638,7 @@ async function runTranslate(targetLang){
   let stickyCtrlEl = null;
   let stickySelectEl = null;
 
+  /** Inject sticky control styles (once). */
   function ensureStickyControlStyles(){
     if(document.getElementById("__i18n_select_style__")) return;
     const s=document.createElement("style");
@@ -770,6 +810,7 @@ async function runTranslate(targetLang){
     document.head.appendChild(p);
   }
 
+  /** Create the sticky translate control panel and wire events. */
   function mountStickyControl(){
     const old=document.getElementById("__i18n_sticky_ctrl__"); if(old) old.remove();
     ensureStickyControlStyles();
@@ -832,6 +873,7 @@ async function runTranslate(targetLang){
     });
   }
 
+  /** Toggle the sticky control panel visibility and focus management. */
   function setStickyCtrlVisibility(force){
     const el = (stickyCtrlEl && document.body.contains(stickyCtrlEl)) ? stickyCtrlEl : document.getElementById("__i18n_sticky_ctrl__");
     if(!el) return;
