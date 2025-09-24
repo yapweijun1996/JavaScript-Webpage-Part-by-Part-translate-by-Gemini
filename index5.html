@@ -18529,18 +18529,41 @@ if (btnTranslate) {
   const ENABLE_SECOND_PASS = false;
 
   const LANGS = [
-    { v: "zh-CN", label: "Mandarin — Mainland (简体)", instr: "Translate to Simplified Chinese (Mainland style)." },
-    { v: "zh-TW", label: "Mandarin — Taiwan (繁體)",   instr: "Translate to Traditional Chinese (Taiwan style)." },
-    { v: "en",    label: "English",                    instr: "Translate to English." },
-    { v: "ja",    label: "Japanese (日本語)",              instr: "Translate to Japanese." },
-    { v: "vi",    label: "Vietnamese (Tiếng Việt)",     instr: "Translate to Vietnamese." },
-    { v: "hi",    label: "Hindi (हिन्दी)",                instr: "Translate to Hindi." },
-    { v: "ko",    label: "Korean (한국어)",               instr: "Translate to Korean." },
-    { v: "th",    label: "Thai (ไทย)",                   instr: "Translate to Thai." },
-    { v: "ms",    label: "Malay (Bahasa Melayu)",       instr: "Translate to Malay." },
-    { v: "id",    label: "Indonesian (Bahasa Indonesia)", instr: "Translate to Indonesian." },
-    { v: "fil",   label: "Filipino (Tagalog)",          instr: "Translate to Filipino (Tagalog)." },
+    { v: "zh-CN",  label: "Mandarin — Mainland China (简体)",             instr: "Translate to Simplified Chinese as used in Mainland China." },
+    { v: "zh-SG",  label: "Mandarin — Singapore (简体)",                   instr: "Translate to Simplified Chinese as used in Singapore." },
+    { v: "zh-TW",  label: "Mandarin — Taiwan (繁體)",                      instr: "Translate to Traditional Chinese as used in Taiwan." },
+    { v: "en-SG", label: "English — Singapore",                          instr: "Translate to English using Singapore conventions." },
+    { v: "en-US", label: "English — United States",                      instr: "Translate to English using United States conventions." },
+    { v: "ja-JP", label: "Japanese — Japan (日本語)",                      instr: "Translate to Japanese as used in Japan." },
+    { v: "vi-VN", label: "Vietnamese — Vietnam (Tiếng Việt)",             instr: "Translate to Vietnamese as used in Vietnam." },
+    { v: "hi-IN", label: "Hindi — India (हिन्दी)",                         instr: "Translate to Hindi as used in India." },
+    { v: "ko-KR", label: "Korean — South Korea (한국어)",                    instr: "Translate to Korean as used in South Korea." },
+    { v: "th-TH", label: "Thai — Thailand (ไทย)",                           instr: "Translate to Thai as used in Thailand." },
+    { v: "ms-MY", label: "Malay — Malaysia (Bahasa Melayu)",               instr: "Translate to Malay as used in Malaysia." },
+    { v: "id-ID", label: "Indonesian — Indonesia (Bahasa Indonesia)",      instr: "Translate to Indonesian as used in Indonesia." },
+    { v: "fil-PH", label: "Filipino — Philippines (Tagalog)",               instr: "Translate to Filipino (Tagalog) as used in the Philippines." },
   ];
+
+  const LEGACY_LANG_MAP = Object.freeze({
+    en: "en-US",
+    ms: "ms-MY",
+    id: "id-ID",
+    fil: "fil-PH",
+    vi: "vi-VN",
+    ja: "ja-JP",
+    hi: "hi-IN",
+    ko: "ko-KR",
+    th: "th-TH"
+  });
+
+  function normalizeLangCode(code) {
+    const trimmed = String(code || "").trim();
+    if (!trimmed) return "";
+    if (LANGS.some(l => l.v === trimmed)) return trimmed;
+    const mapped = LEGACY_LANG_MAP[trimmed];
+    if (mapped && LANGS.some(l => l.v === mapped)) return mapped;
+    return "";
+  }
 
   // ---------- Key helpers ----------
   /** Get API key from window/localStorage or prompt the user once. */
@@ -19096,7 +19119,8 @@ function applyResults(groups, srcObjs, idToTextNode, translated, loader) {
 
 /** Orchestrate the whole pipeline: scan → translate → apply. */
 async function runTranslate(targetLang){
-  const lang = LANGS.find(l => l.v === targetLang) || LANGS[0];
+  const normalized = normalizeLangCode(targetLang) || LANGS[0]?.v || "zh-CN";
+  const lang = LANGS.find(l => l.v === normalized) || LANGS[0];
   debugLog("runTranslate", { target: lang.v, label: lang.label });
   localStorage.setItem(LS_LANG, lang.v);
   const loader = createFullscreenLoader();
@@ -19317,8 +19341,9 @@ async function runTranslate(targetLang){
     const label=document.createElement("span"); label.className="__i18n_label"; label.textContent="Translate to:";
     const select=document.createElement("select"); select.className="__i18n_select";
     LANGS.forEach(l=>{ const o=document.createElement("option"); o.value=l.v; o.textContent=l.label; select.appendChild(o); });
-    const savedLang = (localStorage.getItem(LS_LANG) || "").trim();
-    if (savedLang && LANGS.some(l=>l.v === savedLang)) select.value = savedLang;
+    const savedLangRaw = localStorage.getItem(LS_LANG);
+    const savedLang = normalizeLangCode(savedLangRaw);
+    if (savedLang) select.value = savedLang;
     else select.value = LANGS[0]?.v || "zh-CN";
     localStorage.setItem(LS_LANG, select.value);
     const btnGo=document.createElement("button"); btnGo.type="button"; btnGo.className="__i18n_btn is-primary"; btnGo.textContent="Translate";
@@ -19371,8 +19396,9 @@ async function runTranslate(targetLang){
     el.style.display = shouldShow ? "flex" : "none";
     if(shouldShow){
       if (stickySelectEl) {
-        const saved = (localStorage.getItem(LS_LANG) || "").trim();
-        if (saved && LANGS.some(l=>l.v === saved)) stickySelectEl.value = saved;
+        const savedRaw = localStorage.getItem(LS_LANG);
+        const saved = normalizeLangCode(savedRaw);
+        if (saved) stickySelectEl.value = saved;
       }
       el.removeAttribute("aria-hidden");
       requestAnimationFrame(()=> stickySelectEl?.focus());
